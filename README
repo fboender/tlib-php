@@ -1,0 +1,14 @@
+TLib-PHP
+
+This is TLib-PHP, a collection of PHP classes/functions/stuff that I (Ferry
+Boender) deem useful. Examples on how to use the various classes and methods
+are found at the bottom of tlib.php. Enjoy!
+
+Included are:
+
+    * A string class (not generic string handling, just useful stuff)
+    * A variable manipulation class
+    * A control structure class features additional control structure thingies.
+    * A simple, easy to use, unit tester.
+
+For documentation please refer to the html/index.html file.
