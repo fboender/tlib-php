@@ -316,6 +316,8 @@ class TLUnitTest {
 			TLString::explodeAssign($method, "_", array(&$group, &$name));
 			if ($hasNames && array_key_exists($method, $this->testClass->testNames)) {
 				$name = $this->testClass->testNames[$method];
+			} else {
+				$name = $method;
 			}
 			$this->start($group, $name);
 			try {
