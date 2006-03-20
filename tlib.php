@@ -231,8 +231,11 @@ class TLControlStruct
  * from your test case like this: 
  * <tt>public function MyTestCase($test) { $test->assert(a != b); }</tt>
  * 
- * You can subdivide test classes in groups by putting underscores in the
- * method names. An example test class could look like this:
+ * You can subdivide test methods in groups by putting underscores in the
+ * method names. Methods are called in the order as they appear in the test
+ * class but may be sorted by group in the final results.
+ *
+ * An example test class could look like this:
  *
  * <pre>
  * class TestMe {
@@ -255,6 +258,14 @@ class TLControlStruct
  *   }
  *   public function Grant_Group($test) {
  *     $this->user->group->grantPrivilge(READ);
+ *   }
+ *   public function User_Load_NonExisting($test) {
+ *     $test->failed(new Exception("Non existing user loaded."));
+ *     try {
+ *       new MyProgramUser("AmeliaEarhart");
+ *     catch (Exception $e) {
+ *       $test->passed();
+ *     }
  *   }
  * }
  * </pre>
@@ -358,6 +369,7 @@ class TLUnitTest {
 	 * @brief Mark a single test as having failed. It will mark the test as such and generate a (useable) backtrace.
 	 * @param $e (Exception) The exception that occured.
 	 * @note This is also called by the custom error handler, which mimics a thrown exception
+	 * @note You can safely call this method to set the default pass/fail status of a test method and later on in the test mark it as having passed.
 	 */
 	public function failed($e) {
 		$this->currentTest["passed"] = false;
@@ -392,6 +404,7 @@ class TLUnitTest {
 		}
 		$this->currentTest["dump"] .= "\n";
 	}
+
 	/**
 	 * @brief Assert a boolean expression. If it returns 'true', the test will be marked as passed. Otherwise it will be marked as failed.
 	 * @param $bool (Boolean) Boolean result of an expression.
@@ -422,7 +435,7 @@ class TLUnitTest {
 	/**
 	 * @brief Generate a beautiful dump of the test results in HTML format. This outputs a single HTML page.
 	 * @param $hidePassed (Boolean) If true, passed tests will not be shown. This is useful when you've got alot of testcases and only want the failed ones to show up.
-	 * @param $sortGroups (Boolean) If true, the results will be sorted by group. 
+	 * @param $sortGroups (Boolean) If true, the results will be sorted by group. Otherwise the results will be listed in the same order they where executed.
 	 */
 	public function dumpHtml($hidePassed = false, $sortGroups = false) {
 		if ($sortGroups) { 
