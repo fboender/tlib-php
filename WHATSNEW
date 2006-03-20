@@ -1,0 +1,8 @@
+0.1.1
+
+    - More explanatory comments for TLUnitTest
+    - TLUnitTest: bugfix in the displaying of test names in the results.
+
+0.1
+
+    - Initial release.
