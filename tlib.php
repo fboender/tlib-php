@@ -324,12 +324,15 @@ class TLUnitTest {
             $hasNames = false;
         }
 		foreach(get_class_methods($this->testClass) as $method) {
-			TLString::explodeAssign($method, "_", array(&$group, &$name));
-			if ($hasNames && array_key_exists($method, $this->testClass->testNames)) {
-				$name = $this->testClass->testNames[$method];
-			} else {
+			if (!TLString::explodeAssign($method, "_", array(&$group, &$name))) {
+				$group = "";
 				$name = $method;
 			}
+			if ($hasNames && array_key_exists($method, $this->testClass->testNames)) {
+				$name = $this->testClass->testNames[$method];
+			}
+
+			// Start the test
 			$this->start($group, $name);
 			try {
 				call_user_func(array($testClass, $method), $this);
