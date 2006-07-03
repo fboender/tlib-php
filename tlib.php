@@ -538,6 +538,94 @@ class TLUnitTest {
 	}
 }
 
+/**
+ * @brief Additional debugging routines
+ * 
+ * This class contains additional convenience debugging routines.
+ */
+class TLDebug {
+
+	/**
+	 * @brief Return a backtrace of all visited functions/classes as a single string where each function/method is on a new line.
+	 * Example output:
+	 * <pre>
+	 * test/debug.php:11 Test::foo(15, abc, Array(1, 2, Array))
+	 * test/debug.php:18 Test->bar()
+	 * test/debug.php:22 go()
+	 * </pre>
+	 * @param $relative (Boolean) If true (default), filenames will be shortened by making them relative to the document root.
+	 * @return (string) A string with each function/methode call on a new line, including file, line, function/methodname and parameter info.
+	 */
+	static function backtraceString($relative = True) {
+		$out = "";
+
+		if ($relative) {
+			$docRootLen = strlen($_SERVER["DOCUMENT_ROOT"]);
+		} else {
+			$docRootLen = 0;
+		}
+
+		$trace = debug_backtrace();
+		if (is_array($trace)) {
+			for ($i = 0; $i != count($trace); $i++) {
+				$stackFrame = $trace[$i];
+
+				// Skip frames relating to this class
+				if (array_key_exists("class", $stackFrame) && $stackFrame["class"] == __CLASS__) {
+					continue;
+				}
+
+				if (array_key_exists("file", $stackFrame)) { 
+					$out .= substr($stackFrame["file"], $docRootLen, strlen($stackFrame["file"]) - $docRootLen).":"; 
+				} else {
+					$out .= "??:";
+				}
+				if (array_key_exists("line", $stackFrame)) {
+					$out .= $stackFrame["line"]." ";
+				} else {
+					$out .= "?? ";
+				}
+				if (array_key_exists("class", $stackFrame)) {
+					$out .= $stackFrame["class"].$stackFrame["type"];
+				}
+				if (array_key_exists("function", $stackFrame)) {
+					$out .= $stackFrame["function"]."(";
+					$args = array();
+					if (array_key_exists("args", $stackFrame)) {
+						foreach($stackFrame["args"] as $arg) {
+							if (gettype($arg) == "array") {
+								$args[] = "Array(".@implode(", ", $arg).")";
+							} else {
+								$args[] = $arg;
+							}
+						}
+						$out .= implode(", ", $args);
+					}
+					$out .= ")";
+				}
+				$out .= "\n";
+			}
+		}
+
+		return($out);
+	}
+	
+	/**
+	 * @brief Return a backtrace of all visited functions/classes as a single, one-lined string.
+	 * Example output:
+	 * <pre>
+	 * test/debug.php:11 Test::foo(15, abc, Array(1, 2, Array)); test/debug.php:18 Test->bar(); test/debug.php:22 go(); 
+	 * </pre>
+	 * @param $relative (Boolean) If true (default), filenames will be shortened by making them relative to the document root.
+	 * @return (string) A on-lined string including file, line, function/methodname and parameter info of each function called on the stack.
+	 */
+	static function backtraceSingleLine($relative = True) {
+		$out = TLDebug::backtraceString($relative);
+		$out = str_replace("\n", "; ", $out);
+		return($out);
+	}
+}
+
 error_reporting(E_ALL);
 
 /* Perform a bunch of tests/examples if we're the main script */
