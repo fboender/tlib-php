@@ -271,6 +271,10 @@ class TLControlStruct
  * </pre>
  *
  * Reports can be generated from the results using the ->dumpFoo() methods.
+ *
+ * @warning Please be advised that this class does strange things to error
+ * reporting and handling. Do not be surprised if errors suddenly don't turn up
+ * anymore after you've created an instance of this class.
  */
 class TLUnitTest {
 
@@ -281,17 +285,24 @@ class TLUnitTest {
 	private $currentTest = array();
     private $otherErros = "";
 
+	private $prevErrorReporting = 0;
 	/**
 	 * @brief Create a new Unit test controller
 	 * @param $appName (string) The name of the application you're testing.
 	 * @param $testClass (string or object instance) An instance of or name (when only using static methods) of a class to test.
+	 * @warning Make sure to destroy this class when you're done unit testing, or errors will not show up anymore.
 	 */
 	public function __construct($appName, $testClass) {
-		error_reporting(E_ALL);
+		$this->prevErrorReporting = error_reporting(E_ALL);
 		set_error_handler(array(&$this, "errorHandler"));
 		$this->appName = $appName;
 		$this->testClass = $testClass;
 		$this->run($this->testClass);
+	}
+
+	public function __destruct() {
+		restore_error_handler();
+		error_reporting($this->prevErrorReporting);
 	}
 
 	/**
@@ -626,7 +637,356 @@ class TLDebug {
 	}
 }
 
+/**
+ * @brief Built-in exception for type errors.
+ * This exception can be thrown when a variable is expected to have a certain type, but the type does not match.
+ * 
+ * Example:
+ * <pre>
+ *   function setAge($age) {
+ *     if (!is_int($age)) {
+ *       throw new TypeException("int", $age, "age");
+ *     }
+ *     print("You're age is $age");
+ *   }
+ *   function setPerson($person) {
+ *     if (!is_object($person) || get_class($person) != "Person") {
+ *       throw new TypeException("object(Person)", $person, "person");
+ *     }
+ *   }
+ *   setAge("fourty");
+ *   $monkey = new Animal("Monkey");
+ *   setPerson($monkey);
+ * </pre>
+ *
+ * Results in:
+ * 
+ * <pre>
+ *    Uncaught exception 'TypeException' with message 'Expected "int", got "string(fourty)"' in [stacktrace]
+ *    Uncaught exception 'TypeException' with message 'Expected "object(Person)", got "object(Monkey)"' in [stacktrace]
+ * </pre>
+ */
+class TLTypeException extends Exception {
+
+	/**
+	 * @brief Construct a new TypeException
+	 * @param $expectedType (string) The type you where expecting (int, string, object(ClassType))
+	 * @param $gotVar (mixed) The variable you got who's type didn't match.
+	 * @param $varName (string) The name of the variable you got who's type didn't match.
+	 */
+	public function __construct($expectedType, $gotVar, $varName = null) {
+		
+		$this->expectedType = $expectedType; // The type the caller expected to get
+		$this->type = gettype($gotVar);      // The type of the variable which the caller got
+		if ($varName != null) {
+			$this->name = $varName;              // The name of the variable which the caller got
+		}
+		if (is_object($gotVar)) {
+		$this->value = get_class($gotVar);
+		$this->class = get_class($gotVar);   // The class of the variable which the caller got
+		} else {
+			$this->value = $gotVar;
+		}
+
+		if (isset($this->name)) {
+			$message = sprintf("Expected \"%s\", got \"%s(%s)\" for variable \"%s\"", $this->expectedType, $this->type, $this->value, $this->name);
+		} else {
+			$message = sprintf("Expected \"%s\", got \"%s(%s)\"", $this->expectedType, $this->type, $this->value);
+		}
+
+		parent::__construct($message);
+	}
+}
+
+/**
+ * @brief Built-in exception for value errors.
+ * This exception can be thrown when a variable is expected to have a certain value or adhere to certain criteria, but it does not.
+ * 
+ * Example:
+ * <pre>
+ *   function setAge($age) {
+ *     if ($age < 5 || $age > 120)) {
+ *       throw new ValueException("Age too small or large", $age, "age");
+ *     }
+ *     print("You're age is $age");
+ *   }
+ *   function setEMail($address) {
+ *     if (strpos("@", $address) === False) {
+ *       throw new ValueException("Should contain '@' char", $address, "address");
+ *   }
+ *   setAge(3);
+ *   setEmail("f dot boender at zx dot nl");
+ * </pre>
+ *
+ * Results in:
+ * 
+ * <pre>
+ *    Uncaught exception 'ValueException' with message '$age(3): Age too small or large' in [stacktrace]
+ *    Uncaught exception 'ValueException' with message '$address(f dot boender at zx dot nl): Should contain '@' char' in [stacktrace]
+ * </pre>
+ */
+class TLValueException extends Exception {
+
+	/**
+	 * @brief Construct a new ValueException 
+	 * @param $message (string) The message which describes the value problem.
+	 * @param $gotVar (mixed) The variable you got which did not follow expectations.
+	 * @param $varName (string) The name of the variable (without the $ prepended) you got which did not follow expectations.
+	 */
+	public function __construct($message, $gotVar, $varName) {
+		$message = sprintf("\"$%s(%s)\": %s", $varName, $gotVar, $message);
+		parent::__construct($message);
+	}
+}
+
+/**
+ * @brief Default exception for SQL problems.
+ * If a query problem arises (mysql_query() returns false for instance), throw this exception with the mysql_error() and the query as parameters.
+ * 
+ * Example:
+ * <pre>
+ *  $qry = "INSERT INTO foo VALUES (10, 'bar');
+ *  $res = mysql_query($qry);
+ *  if (!$res) { throw new SQLException(mysql_error(), $qry); }
+ * </pre>
+ */
+class SQLException extends Exception {
+
+	/**
+	 * @brief Construct a new SQLException
+	 * @param $message (string) The message for the exception. Usually the return value of mysql_error() is passed here.
+	 * @param $query (string) The query which contained the caused the error.
+	 */
+	public function __construct($message, $query = "") {
+		$this->message = $message;
+		$this->query = $query;
+	}
+
+	/**
+	 * @brief Return the query that caused this exception to be thrown.
+	 * @return (string) The query that caused this exception to be thrown.
+	 */
+	public function getQuery() {
+		return($this->query);
+	}
+}
+
+
+/**
+ * @brief Self-referring URL helper class
+ * This class provides various methods for refering to the current
+ * server/host/URL/etc. It provides abstractions against HTTP/HTTPS usage,
+ * ports and parameters. 
+ *
+ * Examples:
+ * <pre>
+ * $s = new SelfURL();
+ * print ($s->getServerURL());
+ * print ($s->getAbsolutePathURL());
+ * print ($s->getAbsoluteScriptURL());
+ * print ($s->getAbsoluteFullURL());
+ * print ($s->getAbsoluteFullURL("strip_"));
+ * print ($s->getRelativePathURL());
+ * print ($s->getRelativeScriptURL());
+ * print ($s->getRelativeFullURL());
+ * print ($s->getRelativeFullURL("strip_"));
+ * </pre>
+ *
+ * With the following URL: http://example.com/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar
+ * Outputs:
+ * <pre>
+ * http://example.com
+ * http://example.com/svcmon
+ * http://example.com/svcmon/class.url.php
+ * http://example.com/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar
+ * http://example.com/svcmon/class.url.php?name=ferry&age=26
+ * /svcmon
+ * /svcmon/class.url.php
+ * /svcmon/class.url.php?name=ferry&age=26&strip_foo=bar
+ * /svcmon/class.url.php?name=ferry&age=26
+ * </pre>
+ */
+class TLSelfURL {
+	
+	public $type = "";     /** Type of the URL (http or https) */
+	public $host = "";     /** The hostname as found in the URL */
+	public $port = "";     /** The port that was used to connect */
+	public $path = "";     /** The full path to the script without the script name itself */
+	public $script = "";   /** The script name */
+	public $params = null; /** Any parameters that where given on the URL */
+
+	public function __construct() {
+		if (array_key_exists("HTTPS", $_SERVER)) {
+			$this->type = "https";
+		} else {
+			$this->type = "http";
+		}
+
+		// Get raw data
+		if (!array_key_exists("HTTP_HOST", $_SERVER)) {
+			throw new Exception("Not running on a HTTP server");
+		}
+
+		$this->host = $_SERVER["HTTP_HOST"];
+		$this->port = $_SERVER["SERVER_PORT"];
+		$this->path = dirname($_SERVER["PHP_SELF"]);
+		$this->script = basename($_SERVER["PHP_SELF"]);
+
+		$this->params = $_REQUEST;
+		if (array_key_exists("PHPSESSID", $this->params)) {
+			// Work around PHP's idiotic definition of developer-friendly nonsense.
+			unset($this->params["PHPSESSID"]);
+		}
+
+		// Verify and correct raw data
+		if (strlen($this->path) == 0 || $this->path[0] != '/') {
+			$this->path = '/'.$this->path;
+		}
+		if ($this->path[strlen($this->path) - 1] == '/') {
+			$this->path = substr($this->path, 0, strlen($this->path) - 1);
+		}
+		
+		assert($this->self_check());
+	}
+
+	/**
+	 * Returns the server URL. I.e. "https://example.com". If a non-default
+	 * port was used (not 80 for http or not 443 for https), the port number
+	 * will be appended to the URL.
+	 * @return (string) Server URL
+	 */
+	public function getServerURL() {
+		$serverURL = $this->type."://".$this->host;
+		if ($this->port != "80" && $this->port != "443") {
+			$serverURL .= ":" . $this->port;
+		}
+		return($serverURL);
+	}
+
+	/**
+	 * Returns the absolute URL upto and including the path to the script (but
+	 * not the script name itself). I.e. "http://example.com/svcmon". Does not
+	 * append a trailing backslash.
+	 * @return (string) Server URL + Pathname
+	 */
+	public function getAbsolutePathURL() {
+		$pathURL = $this->getServerURL();
+		$pathURL .= $this->path;
+		return($pathURL);
+	}
+
+	/**
+	 * Returns the relative (to the Server URL) URL upto and including the path
+	 * to the script (but not the script name itself). I.e. "/svcmon". Does not
+	 * append a trailing slash. Always starts with a slash.
+	 * @return (string) Pathname
+	 */
+	public function getRelativePathURL() {
+		$pathURL = $this->path;
+		return($pathURL);
+	}
+
+	/** 
+	 * Returns the absolute URL upto and including the script name. I.e.
+	 * "http://example.com/svcmon/class.url.php". 
+	 * @return (string) Server URL + Pathname + Scriptname.
+	 */
+	public function getAbsoluteScriptURL() {
+		$scriptURL = $this->getServerURL();
+		$scriptURL .= $this->path . '/' . $this->script;
+		return($scriptURL);
+	}
+
+	/** 
+	 * Returns the relative (to the Server URL) URL upto and including the
+	 * script name. I.e.  "/svcmon/class.url.php". Always starts with a slash.
+	 * @return (string) Server URL + Pathname + Scriptname.
+	 */
+	public function getRelativeScriptURL() {
+		$scriptURL = $this->path . '/' . $this->script;
+		return($scriptURL);
+	}
+
+	/**
+	 * Returns a serialized form of the parameters of the URL. I.e. :
+	 * "name=ferry&age=26&strip_foo=bar". If stripVarsPrefix is set, any
+	 * variable starting with $stripVarsPrefix will not be included in the
+	 * serialized parameters.
+	 * @param stripVarsPrefix (string) Prefix of variables that need to be removed from the final result.
+	 * @return Serialized parameters
+	 */
+	public function getParams($stripVarsPrefix = null) {
+		$paramsString = "";
+
+		// Only process params if there are any
+		if (count($this->params) > 0) {
+			// Create a duplicate of the params and remove unwanted ones
+			if ($stripVarsPrefix != null) {
+				$vars = $this->params;
+				$prefixLen = strlen($stripVarsPrefix);
+				foreach(array_keys($vars) as $key) {
+					if (substr($key, 0, $prefixLen) == $stripVarsPrefix) {
+						unset($vars[$key]);
+					}
+				}
+				$paramsString .= "?".http_build_query($vars);
+			} else {
+				$paramsString .= "?".http_build_query($this->params);
+			}
+		}
+
+		return($paramsString);
+	}
+
+	/** 
+	 * Returns the absolute URL upto and including the serialized parameters. I.e.
+	 * "http://example.com/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar". 
+	 * @return (string) Server URL + Pathname + Scriptname + Serialized Params.
+	 */
+	public function getAbsoluteFullURL($stripVarsPrefix = null) {
+		$fullURL = $this->getAbsoluteScriptURL();
+		$fullURL .= $this->getParams($stripVarsPrefix);
+
+		return($fullURL);
+	}
+
+	/** 
+	 * Returns the relative URL upto and including the serialized parameters. I.e.
+	 * "/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar". Always starts
+	 * with a slash.
+	 * @return (string) Pathname + Scriptname + Serialized Params.
+	 */
+	public function getRelativeFullURL($stripVarsPrefix = null) {
+		$fullURL = $this->getRelativeScriptURL();
+		$fullURL .= $this->getParams($stripVarsPrefix);
+		return($fullURL);
+	}
+
+	/**
+	 * Verify that this object was constructed properly and that all values are
+	 * intelligible. This is a purely defensive-coding practice. It can be
+	 * turned off once this code is considered stable (which is never).
+	 */
+	private function self_check() {
+		if (
+			$this->type == "" || 
+			$this->host == "" || 
+			$this->port == "" || 
+			$this->path == "" || 
+			$this->script == "" || 
+			$this->params == "") {
+				return(false);
+		} else {
+			return(true);
+		}
+	}
+}
+
+assert_options(ASSERT_ACTIVE, 1);
+assert_options(ASSERT_WARNING, 1);
+assert_options(ASSERT_BAIL, 1);
 error_reporting(E_ALL);
+ini_set("display_errors", "1");
 
 /* Perform a bunch of tests/examples if we're the main script */
 if (TLControlStruct::isMain(__FILE__)) {
@@ -702,5 +1062,58 @@ if (TLControlStruct::isMain(__FILE__)) {
 	$cases = new TestMe();
 	$test = new TLUnitTest("ExampleTest", $cases);
 	print($test->dumpPrettyText());
+	$test->__destruct(); // PHP Bug work-around.
+
+	//###########################################################################
+	// TLTypeException
+	//###########################################################################
+	// TLTypeException
+	function TLTypeExceptionTest($name) {
+		if (!is_string($name)) {
+			throw new TLTypeException("string", $name, "name");
+		}
+	}
+	try {
+		TLTypeExceptionTest("ferry");
+		TLTypeExceptionTest(26);
+	} catch (TLTypeException $e) {
+		print($e->getMessage()."\n");
+	}
+
+	//###########################################################################
+	// TLValueException
+	//###########################################################################
+	// TLValueException
+	function TLValueExceptionTest($age) {
+		if (!($age > -1 and $age < 200)) {
+			throw new TLValueException("Age should be between 0 and 200", $age, "age");
+		}
+	}
+	try {
+		TLValueExceptionTest(50);
+		TLValueExceptionTest(230);
+	} catch (TLValueException $e) {
+		print($e->getMessage()."\n");
+	}
+
+	//###########################################################################
+	// TLSelfURL 
+	//###########################################################################
+	// 
+	try {
+		$s = new TLSelfURL();
+		print ($s->getServerURL());
+		print ($s->getAbsolutePathURL());
+		print ($s->getAbsoluteScriptURL());
+		print ($s->getAbsoluteFullURL());
+		print ($s->getAbsoluteFullURL("strip_"));
+		print ($s->getRelativePathURL());
+		print ($s->getRelativeScriptURL());
+		print ($s->getRelativeFullURL());
+		print ($s->getRelativeFullURL("strip_"));
+	} catch (Exception $e) {
+		// Not running in a HTTP server.
+		;
+	}
 }
 ?>
