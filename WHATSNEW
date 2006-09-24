@@ -1,3 +1,11 @@
+0.2
+
+    - TLNetwork: Network information manipulation class. Netmask dotted <-> bit
+      conversion.
+    - TLDebug::startPedantic: Pendatic error checking.
+    - Improvements in documentation.
+    - Small bugfixes & defensive coding practices.
+
 0.1.1
 
     - More explanatory comments for TLUnitTest

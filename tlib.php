@@ -4,15 +4,61 @@
 
 /**
  * @mainpage
- * <h1>TLib-PHP</h1>
  * This is TLib-PHP, a collection of PHP classes/functions/stuff that I (Ferry Boender) deem useful. 
  *
  * Examples on how to use the various classes and methods are found at the bottom of tlib.php. Enjoy!
  * 
- * <h2>License</h2>
- *
+ * <h2>Web</h2>
+ * - TLSelfURL: Helper class for referring to the current page (location).
+ * 
+ * <h2>Exceptions</h2>
+ * - TLTypeException: Throw this when a passed parameter is not of the expected type.
+ * - TLValueException: Throw this when a passed parameter does not have a correct value.
+ * - TLSQLException: Throw this when your program encounters an SQL error.
+ * 
+ * <h2>Information manipulation classes</h2>
+ * - TLString: Additional string manipulation methods.
+ * - TLVars: Variable manipulation class.
+ * - TLNetwork: Network information manipulation class.
+ * 
+ * <h2>Development helpers</h2>
+ * - TLDebug: Additional debugging stuff.
+ * - TLUnitTest: Very simple Unit Tester.
+ * 
+ * <h2>Misc</h2>
+ * - TLControlStruct: Additional control structure tools.
+ * 
  * TLib-PHP is released under the <a href="http://www.gnu.org/copyleft/gpl.html"> General Public License</a> (LGPL). 
  */
+
+/** 
+ * @brief Network information manipulation class.
+ */
+class TLNetwork
+{
+	/**
+	 * @brief Convert a dotted netmask representation (255.255.255.0) to a bit notation (/24).
+	 * @param @nmDot (string) Dotted netmask representation (255.255.255.0)
+	 * @return (int) Integer representation of the bits. (24)
+	 */
+	public static function netmaskDot2Bit($nmDot) {
+		$netmask_full = 0; $netmask_full = ~$netmask_full; /* Fill netmask with binary 1's */
+		$bitnetmask = $netmask_full - ip2long($nmDot);
+		return (32-strlen(decbin($bitnetmask))); /* ugly, but working */
+	}
+
+	/**
+	 * @brief Convert a bit netmask representation (/24) to a dotted notation (255.255.255.0).
+	 * @param @nmBit (int) Bit netmask representation (24)
+	 * @return (string) Dotted representation of the bits. (255.255.255.0)
+	 */
+	public static function netmaskBit2Dot ($nmBit) {
+		$bitnetmask_inv = pow(2, (int)(32-$nmBit)) - 1; /* I.e. /24 -> 255 */
+		$netmask_full = 0; $netmask_full = ~$netmask_full; /* Fill netmask with binary 1's */
+
+		return (long2ip($netmask_full - $bitnetmask_inv));
+	}
+}
 
 /**
  * @brief String manipulation class.
@@ -23,6 +69,13 @@ class TLString
 {
 	/**
 	 * @brief Split string using a seperator and assign the resulting parts to variables.
+	 *
+     * Example:
+     * @code
+     * $foo = "foo,bar,bas";
+     * TLString::explodeAssign($foo, ",", (&foo, &$bar, &$bas) );
+     * @endcode
+     *
 	 * @param $string (string) String to split.
 	 * @param $seperator (char) Character to split on.
 	 * @param $vars (ass. array) Associative array containing pass-by-reference variables to which to asign the parts of the exploded string. Number of vars must be equal to the number of parts that are the result of the split (or false will be returned).
@@ -45,6 +98,12 @@ class TLString
 
 	/**
 	 * @brief Assign the elements in an array to separate variables.
+	 *
+     * @code
+     * $foo = array('bar', 'bas');
+     * TLString::arrayAssign($foo, (&$bar, &$bas) );
+     * @endcode
+	 *
 	 * @param $array (array) Array of which to assign elements
 	 * @param $vars (ass. array) Associative array containing pass-by-reference variables to which to asign the parts of the exploded string. Number of vars must be equal to the number of parts that are the result of the split (or false will be returned).
 	 * @returns True if the parts were succesfully assigned to the variables in $var. False if otherwise.
@@ -119,7 +178,12 @@ class TLString
 class TLVars
 {
 	/**
-	 * @brief Check if a variable is empty. This does roughly the same as PHP's empty() function but works on indirect variables.
+	 * @brief Check if a variable is empty. 
+	 * 
+	 * This does roughly the same as PHP's empty() function but works on
+	 * indirect variables. That is, a variable returned from a function or
+	 * method can't be used with PHP's empty() function. This method does.
+	 *
 	 * @param $var (mixed) Variable to check.
 	 * @returns True if $var is 'empty'. "", null, false, 0 and an empty array are considered empty (strict type checking is enforced (===)). False if not empty.
 	 * @note To supress 'Undefined variable' errors, you should prepend the call to this method with an '@'.
@@ -133,7 +197,27 @@ class TLVars
 	}
 
 	/**
-	 * @brief Use this function to bring the value of a variable from the client side/serverside into the current scope. This function tries to safely implement a kind of register_globals.
+	 * @brief Bring the value of variable into the current scope.
+	 * 
+	 * Use this function to bring the value of a variable from the client
+	 * side/serverside into the current scope. This function tries to safely
+	 * implement a kind of register_globals. You can set the priorities of the
+	 * various import sources (POST, GET, etc) by changing the order of the
+	 * contents of the $from parameter. Additionally, you can specify a default
+	 * value which will be set if the variable wasn't found.
+	 *
+	 * Example:
+	 * @code
+	 * $language = import("language", "SCPG", "en");
+	 * setcookie("language", $language, time() + 86400);
+	 * @endcode
+	 *
+	 * The code above import the 'language' variables value. It first tries the
+	 * session, then a cookie, then POST and GET data. If all fails, the
+	 * default 'en' will be used. After that a cookie is set so the next time
+	 * the user returns,the language is automatically loaded. The cookie can be
+	 * overridden with GET or POST.
+	 * 
 	 * @param varName (string) The name of the variable to import.
 	 * @param from (string) Specifies the source from where to import the variable. I.e. cookies, GET, POST, etc. It should be in the form of s string containing one or more of the chars in 'SPGC'. Last char in the string overrides previous sources.
 	 * @param default (string) When no value is found in sources, assign this value.
@@ -150,31 +234,11 @@ class TLVars
 			$c = $from[$i];
 
 			switch ($c) {
-				case 'F' :
-					if (array_key_exists($varName, $_FILES)) {
-						$varValue = $_FILES[$varName];
-					}
-					break;
-				case 'S' :
-					if (array_key_exists($varName, $_SESSION)) {
-						$varValue = $_SESSION[$varName];
-					}
-					break;
-				case 'P' :
-					if (array_key_exists($varName, $_POST)) {
-						$varValue = $_POST[$varName];
-					}
-					break;
-				case 'G' :
-					if (array_key_exists($varName, $_GET)) {
-						$varValue = $_GET[$varName];
-					}
-					break;
-				case 'C' :
-					if (array_key_exists($varName, $_COOKIE)) {
-						$varValue = $_COOKIE[$varName];
-					}
-					break;
+				case 'F' : if (isset($_FILES) && array_key_exists($varName, $_FILES)) { $varValue = $_FILES[$varName]; } break;
+				case 'S' : if (isset($_SESSION) && array_key_exists($varName, $_SESSION)) { $varValue = $_SESSION[$varName]; } break;
+				case 'P' : if (isset($_POST) && array_key_exists($varName, $_POST)) { $varValue = $_POST[$varName]; } break;
+				case 'G' : if (isset($_GET) && array_key_exists($varName, $_GET)) { $varValue = $_GET[$varName]; } break;
+				case 'C' : if (isset($_COOKIE) && array_key_exists($varName, $_COOKIE)) { $varValue = $_COOKIE[$varName]; } break;
 				default: break;
 			}
 		}
@@ -237,7 +301,7 @@ class TLControlStruct
  *
  * An example test class could look like this:
  *
- * <pre>
+ * @code
  * class TestMe {
  *   public $testNames = array(
  *     "User_Load" => "Load a user",
@@ -260,6 +324,7 @@ class TLControlStruct
  *     $this->user->group->grantPrivilge(READ);
  *   }
  *   public function User_Load_NonExisting($test) {
+ *     // Test PASSES if an error is thrown! (it's supposed to do so)
  *     $test->failed(new Exception("Non existing user loaded."));
  *     try {
  *       new MyProgramUser("AmeliaEarhart");
@@ -268,6 +333,18 @@ class TLControlStruct
  *     }
  *   }
  * }
+ * @endcode
+ *
+ * Example output could look like this:
+ * <pre>
+ *  Nr | Test                        | Passed | Result
+ * ----+-----------------------------+--------+-----------------------------------------
+ *   1 | User:Load a user            | passed | 
+ *   2 | User:Save a user            | passed | 
+ *   3 | User:Load_NonExisting       | FAILED | Non existing user loaded.
+ *   4 | Grant:Give rights to a user | passed |
+ *   5 | Grant:Give rights to a group| passed |
+ *   6 | Group:Add user to group     | passed | 
  * </pre>
  *
  * Reports can be generated from the results using the ->dumpFoo() methods.
@@ -300,6 +377,9 @@ class TLUnitTest {
 		$this->run($this->testClass);
 	}
 
+	/*
+	 * @brief Destructor.
+	 */
 	public function __destruct() {
 		restore_error_handler();
 		error_reporting($this->prevErrorReporting);
@@ -635,6 +715,21 @@ class TLDebug {
 		$out = str_replace("\n", "; ", $out);
 		return($out);
 	}
+
+	/** 
+	 * @brief Set some PHP configuration options so that all errors and warnings will be shown and will be fatal.
+	 */
+	static function startPedantic() {
+		assert_options(ASSERT_ACTIVE, 1);
+		assert_options(ASSERT_WARNING, 1);
+		assert_options(ASSERT_BAIL, 1);
+		if (defined("E_STRICT")) {
+			error_reporting(E_ALL | E_STRICT);
+		} else {
+			error_reporting(E_ALL);
+		}
+		ini_set("display_errors", "1");
+	}
 }
 
 /**
@@ -642,22 +737,22 @@ class TLDebug {
  * This exception can be thrown when a variable is expected to have a certain type, but the type does not match.
  * 
  * Example:
- * <pre>
- *   function setAge($age) {
- *     if (!is_int($age)) {
- *       throw new TypeException("int", $age, "age");
- *     }
- *     print("You're age is $age");
+ * @code
+ * function setAge($age) {
+ *   if (!is_int($age)) {
+ *     throw new TypeException("int", $age, "age");
  *   }
- *   function setPerson($person) {
- *     if (!is_object($person) || get_class($person) != "Person") {
- *       throw new TypeException("object(Person)", $person, "person");
- *     }
+ *   print("You're age is $age");
+ * }
+ * function setPerson($person) {
+ *   if (!is_object($person) || get_class($person) != "Person") {
+ *     throw new TypeException("object(Person)", $person, "person");
  *   }
- *   setAge("fourty");
- *   $monkey = new Animal("Monkey");
- *   setPerson($monkey);
- * </pre>
+ * }
+ * setAge("fourty");
+ * $monkey = new Animal("Monkey");
+ * setPerson($monkey);
+ * @endcode
  *
  * Results in:
  * 
@@ -703,26 +798,26 @@ class TLTypeException extends Exception {
  * This exception can be thrown when a variable is expected to have a certain value or adhere to certain criteria, but it does not.
  * 
  * Example:
- * <pre>
- *   function setAge($age) {
- *     if ($age < 5 || $age > 120)) {
- *       throw new ValueException("Age too small or large", $age, "age");
- *     }
- *     print("You're age is $age");
+ * @code
+ * function setAge($age) {
+ *   if ($age < 5 || $age > 120)) {
+ *     throw new ValueException("Age too small or large", $age, "age");
  *   }
- *   function setEMail($address) {
- *     if (strpos("@", $address) === False) {
- *       throw new ValueException("Should contain '@' char", $address, "address");
- *   }
- *   setAge(3);
- *   setEmail("f dot boender at zx dot nl");
- * </pre>
+ *   print("You're age is $age");
+ * }
+ * function setEMail($address) {
+ *   if (strpos("@", $address) === False) {
+ *     throw new ValueException("Should contain '@' char", $address, "address");
+ * }
+ * setAge(3);
+ * setEmail("f dot boender at zx dot nl");
+ * @endcode
  *
  * Results in:
  * 
  * <pre>
- *    Uncaught exception 'ValueException' with message '$age(3): Age too small or large' in [stacktrace]
- *    Uncaught exception 'ValueException' with message '$address(f dot boender at zx dot nl): Should contain '@' char' in [stacktrace]
+ * Uncaught exception 'ValueException' with message '$age(3): Age too small or large' in [stacktrace]
+ * Uncaught exception 'ValueException' with message '$address(f dot boender at zx dot nl): Should contain '@' char' in [stacktrace]
  * </pre>
  */
 class TLValueException extends Exception {
@@ -744,13 +839,13 @@ class TLValueException extends Exception {
  * If a query problem arises (mysql_query() returns false for instance), throw this exception with the mysql_error() and the query as parameters.
  * 
  * Example:
- * <pre>
+ * @code
  *  $qry = "INSERT INTO foo VALUES (10, 'bar');
  *  $res = mysql_query($qry);
  *  if (!$res) { throw new SQLException(mysql_error(), $qry); }
- * </pre>
+ * @endcode
  */
-class SQLException extends Exception {
+class TLSQLException extends Exception {
 
 	/**
 	 * @brief Construct a new SQLException
@@ -779,7 +874,7 @@ class SQLException extends Exception {
  * ports and parameters. 
  *
  * Examples:
- * <pre>
+ * @code
  * $s = new SelfURL();
  * print ($s->getServerURL());
  * print ($s->getAbsolutePathURL());
@@ -790,7 +885,7 @@ class SQLException extends Exception {
  * print ($s->getRelativeScriptURL());
  * print ($s->getRelativeFullURL());
  * print ($s->getRelativeFullURL("strip_"));
- * </pre>
+ * @endcode
  *
  * With the following URL: http://example.com/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar
  * Outputs:
@@ -808,13 +903,16 @@ class SQLException extends Exception {
  */
 class TLSelfURL {
 	
-	public $type = "";     /** Type of the URL (http or https) */
-	public $host = "";     /** The hostname as found in the URL */
-	public $port = "";     /** The port that was used to connect */
-	public $path = "";     /** The full path to the script without the script name itself */
-	public $script = "";   /** The script name */
-	public $params = null; /** Any parameters that where given on the URL */
+	public $type = "";     /**< Type of the URL (http or https) */
+	public $host = "";     /**< The hostname as found in the URL */
+	public $port = "";     /**< The port that was used to connect */
+	public $path = "";     /**< The full path to the script without the script name itself */
+	public $script = "";   /**< The script name */
+	public $params = null; /**< Any parameters that where given on the URL */
 
+	/**
+	 * @brief Constructor.
+	 */
 	public function __construct() {
 		if (array_key_exists("HTTPS", $_SERVER)) {
 			$this->type = "https";
@@ -982,18 +1080,23 @@ class TLSelfURL {
 	}
 }
 
-assert_options(ASSERT_ACTIVE, 1);
-assert_options(ASSERT_WARNING, 1);
-assert_options(ASSERT_BAIL, 1);
-error_reporting(E_ALL);
-ini_set("display_errors", "1");
+TLDebug::startPedantic();
 
 /* Perform a bunch of tests/examples if we're the main script */
 if (TLControlStruct::isMain(__FILE__)) {
 	//###########################################################################
+	// TLNetwork
+	//###########################################################################
+	// TLNetwork::netmaskDot2Bit()
+	print (TLNetwork::netmaskDot2Bit("255.255.254.0")."\n");
+	//---------------------------------------------------------------------------
+	// TLNetwork::netmaskBit2Dot()
+	print (TLNetwork::netmaskBit2Dot(24)."\n");
+
+	//###########################################################################
 	// TLString
 	//###########################################################################
-	// TLString::explode()
+	// TLString::explodeAssign()
 	if (!TLString::explodeAssign("Peterson:Pete:25", ':', array(&$last,&$first,&$age))) {
 		$last = "Doe";
 		$first = "John";
