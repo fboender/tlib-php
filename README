@@ -10,5 +10,6 @@ Included are:
     * A variable manipulation class
     * A control structure class features additional control structure thingies.
     * A simple, easy to use, unit tester.
+    * And more... see the html/ directory for a full list.
 
 For documentation please refer to the html/index.html file.
