@@ -219,7 +219,7 @@ class TLVars
 	 * overridden with GET or POST.
 	 * 
 	 * @param varName (string) The name of the variable to import.
-	 * @param from (string) Specifies the source from where to import the variable. I.e. cookies, GET, POST, etc. It should be in the form of s string containing one or more of the chars in 'SPGC'. Last char in the string overrides previous sources.
+	 * @param from (string) Specifies the source from where to import the variable. It should be in the form of a string containing one or more of the chars in 'FSPGC', where F=Files, S=Session, P=Post, G=Get, C=Cookie. Last char in the string overrides previous sources.
 	 * @param default (string) When no value is found in sources, assign this value.
 	 * @pre Use of 'S' in From requires session_start() to already be called
 	 * @returns Contents of the variable as gotten from the last valid source described by $From. If VarName was not found in any of the specified sources, this function returns 'undefined', and the the var to which assignment is done should also be undefined.
@@ -1080,10 +1080,10 @@ class TLSelfURL {
 	}
 }
 
-TLDebug::startPedantic();
-
 /* Perform a bunch of tests/examples if we're the main script */
 if (TLControlStruct::isMain(__FILE__)) {
+	TLDebug::startPedantic();
+
 	//###########################################################################
 	// TLNetwork
 	//###########################################################################
