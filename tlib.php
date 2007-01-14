@@ -10,6 +10,7 @@
  * 
  * <h2>Web</h2>
  * - TLSelfURL: Helper class for referring to the current page (location).
+ * - TLWebControl: Simple website controller framework with OO, views and templates.
  * 
  * <h2>Exceptions</h2>
  * - TLTypeException: Throw this when a passed parameter is not of the expected type.
@@ -22,6 +23,7 @@
  * - TLNetwork: Network information manipulation class.
  * 
  * <h2>Development helpers</h2>
+ * - TLValidate: Variable contents validation.
  * - TLDebug: Additional debugging stuff.
  * - TLUnitTest: Very simple Unit Tester.
  * 
@@ -31,34 +33,471 @@
  * TLib-PHP is released under the <a href="http://www.gnu.org/copyleft/gpl.html"> General Public License</a> (LGPL). 
  */
 
-/** 
- * @brief Network information manipulation class.
+/////////////////////////////////////////////////////////////////////////////
+// Web
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Self-referring URL helper class
+ * This class provides various methods for refering to the current
+ * server/host/URL/etc. It provides abstractions against HTTP/HTTPS usage,
+ * ports and parameters. 
+ *
+ * Examples:
+ * @code
+ * $s = new SelfURL();
+ * print ($s->getServerURL());
+ * print ($s->getAbsolutePathURL());
+ * print ($s->getAbsoluteScriptURL());
+ * print ($s->getAbsoluteFullURL());
+ * print ($s->getAbsoluteFullURL("strip_"));
+ * print ($s->getRelativePathURL());
+ * print ($s->getRelativeScriptURL());
+ * print ($s->getRelativeFullURL());
+ * print ($s->getRelativeFullURL("strip_"));
+ * @endcode
+ *
+ * With the following URL: http://example.com/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar
+ * Outputs:
+ * <pre>
+ * http://example.com
+ * http://example.com/svcmon
+ * http://example.com/svcmon/class.url.php
+ * http://example.com/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar
+ * http://example.com/svcmon/class.url.php?name=ferry&age=26
+ * /svcmon
+ * /svcmon/class.url.php
+ * /svcmon/class.url.php?name=ferry&age=26&strip_foo=bar
+ * /svcmon/class.url.php?name=ferry&age=26
+ * </pre>
  */
-class TLNetwork
-{
+class TLSelfURL {
+	
+	public $type = "";     /**< Type of the URL (http or https) */
+	public $host = "";     /**< The hostname as found in the URL */
+	public $port = "";     /**< The port that was used to connect */
+	public $path = "";     /**< The full path to the script without the script name itself */
+	public $script = "";   /**< The script name */
+	public $params = null; /**< Any parameters that where given on the URL */
+
 	/**
-	 * @brief Convert a dotted netmask representation (255.255.255.0) to a bit notation (/24).
-	 * @param @nmDot (string) Dotted netmask representation (255.255.255.0)
-	 * @return (int) Integer representation of the bits. (24)
+	 * @brief Constructor.
 	 */
-	public static function netmaskDot2Bit($nmDot) {
-		$netmask_full = 0; $netmask_full = ~$netmask_full; /* Fill netmask with binary 1's */
-		$bitnetmask = $netmask_full - ip2long($nmDot);
-		return (32-strlen(decbin($bitnetmask))); /* ugly, but working */
+	public function __construct() {
+		if (array_key_exists("HTTPS", $_SERVER)) {
+			$this->type = "https";
+		} else {
+			$this->type = "http";
+		}
+
+		// Get raw data
+		if (!array_key_exists("HTTP_HOST", $_SERVER)) {
+			throw new Exception("Not running on a HTTP server");
+		}
+
+		$this->host = $_SERVER["HTTP_HOST"];
+		$this->port = $_SERVER["SERVER_PORT"];
+		$this->path = dirname($_SERVER["PHP_SELF"]);
+		$this->script = basename($_SERVER["PHP_SELF"]);
+
+		$this->params = $_REQUEST;
+		if (array_key_exists("PHPSESSID", $this->params)) {
+			// Work around PHP's idiotic definition of developer-friendly nonsense.
+			unset($this->params["PHPSESSID"]);
+		}
+
+		// Verify and correct raw data
+		if (strlen($this->path) == 0 || $this->path[0] != '/') {
+			$this->path = '/'.$this->path;
+		}
+		if ($this->path[strlen($this->path) - 1] == '/') {
+			$this->path = substr($this->path, 0, strlen($this->path) - 1);
+		}
+		
+		assert($this->self_check());
 	}
 
 	/**
-	 * @brief Convert a bit netmask representation (/24) to a dotted notation (255.255.255.0).
-	 * @param @nmBit (int) Bit netmask representation (24)
-	 * @return (string) Dotted representation of the bits. (255.255.255.0)
+	 * Returns the server URL. I.e. "https://example.com". If a non-default
+	 * port was used (not 80 for http or not 443 for https), the port number
+	 * will be appended to the URL.
+	 * @returns (string) Server URL
 	 */
-	public static function netmaskBit2Dot ($nmBit) {
-		$bitnetmask_inv = pow(2, (int)(32-$nmBit)) - 1; /* I.e. /24 -> 255 */
-		$netmask_full = 0; $netmask_full = ~$netmask_full; /* Fill netmask with binary 1's */
+	public function getServerURL() {
+		$serverURL = $this->type."://".$this->host;
+		if ($this->port != "80" && $this->port != "443") {
+			$serverURL .= ":" . $this->port;
+		}
+		return($serverURL);
+	}
 
-		return (long2ip($netmask_full - $bitnetmask_inv));
+	/**
+	 * Returns the absolute URL upto and including the path to the script (but
+	 * not the script name itself). I.e. "http://example.com/svcmon". Does not
+	 * append a trailing backslash.
+	 * @returns (string) Server URL + Pathname
+	 */
+	public function getAbsolutePathURL() {
+		$pathURL = $this->getServerURL();
+		$pathURL .= $this->path;
+		return($pathURL);
+	}
+
+	/**
+	 * Returns the relative (to the Server URL) URL upto and including the path
+	 * to the script (but not the script name itself). I.e. "/svcmon". Does not
+	 * append a trailing slash. Always starts with a slash.
+	 * @returns (string) Pathname
+	 */
+	public function getRelativePathURL() {
+		$pathURL = $this->path;
+		return($pathURL);
+	}
+
+	/** 
+	 * Returns the absolute URL upto and including the script name. I.e.
+	 * "http://example.com/svcmon/class.url.php". 
+	 * @returns (string) Server URL + Pathname + Scriptname.
+	 */
+	public function getAbsoluteScriptURL() {
+		$scriptURL = $this->getServerURL();
+		$scriptURL .= $this->path . '/' . $this->script;
+		return($scriptURL);
+	}
+
+	/** 
+	 * Returns the relative (to the Server URL) URL upto and including the
+	 * script name. I.e.  "/svcmon/class.url.php". Always starts with a slash.
+	 * @returns (string) Server URL + Pathname + Scriptname.
+	 */
+	public function getRelativeScriptURL() {
+		$scriptURL = $this->path . '/' . $this->script;
+		return($scriptURL);
+	}
+
+	/**
+	 * Returns a serialized form of the parameters of the URL. I.e. :
+	 * "name=ferry&age=26&strip_foo=bar". If stripVarsPrefix is set, any
+	 * variable starting with $stripVarsPrefix will not be included in the
+	 * serialized parameters.
+	 * @param stripVarsPrefix (string) Prefix of variables that need to be removed from the final result.
+	 * @returns Serialized parameters
+	 */
+	public function getParams($stripVarsPrefix = null) {
+		$paramsString = "";
+
+		// Only process params if there are any
+		if (count($this->params) > 0) {
+			// Create a duplicate of the params and remove unwanted ones
+			if ($stripVarsPrefix != null) {
+				$vars = $this->params;
+				$prefixLen = strlen($stripVarsPrefix);
+				foreach(array_keys($vars) as $key) {
+					if (substr($key, 0, $prefixLen) == $stripVarsPrefix) {
+						unset($vars[$key]);
+					}
+				}
+				$paramsString .= "?".http_build_query($vars);
+			} else {
+				$paramsString .= "?".http_build_query($this->params);
+			}
+		}
+
+		return($paramsString);
+	}
+
+	/** 
+	 * Returns the absolute URL upto and including the serialized parameters. I.e.
+	 * "http://example.com/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar". 
+	 * @returns (string) Server URL + Pathname + Scriptname + Serialized Params.
+	 */
+	public function getAbsoluteFullURL($stripVarsPrefix = null) {
+		$fullURL = $this->getAbsoluteScriptURL();
+		$fullURL .= $this->getParams($stripVarsPrefix);
+
+		return($fullURL);
+	}
+
+	/** 
+	 * Returns the relative URL upto and including the serialized parameters. I.e.
+	 * "/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar". Always starts
+	 * with a slash.
+	 * @returns (string) Pathname + Scriptname + Serialized Params.
+	 */
+	public function getRelativeFullURL($stripVarsPrefix = null) {
+		$fullURL = $this->getRelativeScriptURL();
+		$fullURL .= $this->getParams($stripVarsPrefix);
+		return($fullURL);
+	}
+
+	/**
+	 * Verify that this object was constructed properly and that all values are
+	 * intelligible. This is a purely defensive-coding practice. It can be
+	 * turned off once this code is considered stable (which is never).
+	 */
+	private function self_check() {
+		if (
+			$this->type == "" || 
+			$this->host == "" || 
+			$this->port == "" || 
+			$this->path == "" || 
+			$this->script == "" || 
+			$this->params == "") {
+				return(false);
+		} else {
+			return(true);
+		}
 	}
 }
+
+class TLWebControlException extends Exception { }
+/**
+ * @brief Simple website controller framework with OO, views and templates.
+ * 
+ * TLWebControl offers a small, simple framework for creating websites. It
+ * offers an Object Oriented approach to defining the various parts of your web
+ * application (actions). It also has templates and views. It handles the
+ * calling of actions, passing variables from the webserver to the various
+ * actions, views and templates.
+ *
+ * To use this web control simply create a class that extends the TLWebControl
+ * class. 
+ *
+ * The _init() method can be used to intialize your web application. You MUST 
+ * implement this method. 
+ *
+ * Next, you can create methods in the derived class which will correspond to
+ * the actions that can be called on your interactive website. If you specify
+ * parameters in the methods you define, TLWebControl will automatically scan
+ * the POST and GET variables to see if the variables are available. GET
+ * variables will override POST variables. If you need variables from outside
+ * POST and GET variables, just use the super globals. All output from the
+ * actions (such as print, etc) will be captured in the output buffer. You 
+ * can access the output buffer using $this->_getOutputBuffer().
+ *
+ * Views can be used to create an abstraction between application logic and
+ * presentation. Simply call $this->_view(filename) in a method in the derived
+ * class to load and execute the view. Variables can be offered to the view by
+ * setting $this->variableName. The view can than access these using
+ * $this->variableName.
+ *
+ * When you instantiate the derived class, you can assign templates and then
+ * get the output using _getOutput(). A template can include the output of 
+ * your application by displaying the return value of $this->_getOutputBuffer().
+ *
+ * Here's a little example to get you started:
+ *
+ * <b>index.php</b>
+ * @code
+ * <?
+ *     
+ * include("tlib.php");
+ * 
+ * class WebTest extends TLWebControl
+ * {
+ *     public function _init($action) {
+ *         $this->appName = "Name processor";
+ *     }
+ * 
+ *     public function getName() {
+ *         $this->title = "Enter your name";
+ *         $this->_view("getName.php");
+ *     }
+ * 
+ *     public function processName($name) {
+ *         $this->title = "Name processed";
+ *         $this->name = $name;
+ *         $this->_view("processName.php");
+ *     }
+ * }
+ * 
+ * try {
+ *     $wt = new WebTest("getName");
+ *     $wt->_setTemplateFromFile("template.php");
+ *     print($wt->_getOutput());
+ * } catch (TLWebControlException $e) {
+ *     print("Internal appliation error.");
+ * }
+ * 
+ * ?>
+ * @endcode
+ * 
+ * <b>template.php</b>
+ * @code
+ * <html>
+ *   <head><title><?=$this->appName?> - <?=$this->title?></title></head>
+ *   <body>
+ *     <h1><?=$this->appName?></h1>
+ *     <h2><?=$this->title?></h2>
+ *     <?=$this->_getOutputBuffer()?>
+ *   </body>
+ * </html>
+ * @endcode
+ *
+ * <b>getName.php</b>
+ * @code
+ * <form name='name'>
+ *     <input type='hidden' name='action' value='processName' />
+ *     <input type='text' name='name' value='' />
+ *     <input type='submit' value='Process my name' />
+ * </form>
+ * @endcode
+ *
+ * <b>processName.php</b>
+ * @code
+ * Ah, so your name is <b><?=$this->name?></b> huh? Well <?=$this->name?>, welcome
+ * to this application. Wanna try it <a href="?action=getName">again</a>?
+ * @endcode
+ */
+abstract class TLWebControl
+{
+	private $defaultAction;
+	private $action;
+	private $outputBuffer = "";
+	private $templateContents = '<?=$this->_getOutputBuffer(); ?>';
+	private $templateFile = null;
+
+	/**
+	 * @brief Create a new TLWebControl framework.
+	 * @param $defaultAction (string) The default action to run if no action has been specified.
+	 */
+	public function __construct($defaultAction) {
+        // Find the current action
+        $this->defaultAction = $defaultAction;
+        $action = TLVars::import("action", "GP", $defaultAction);
+
+		// Call the init function so the implementor can initialize sessions 'n
+		// stuff.
+		$this->_init($action);
+
+		// Run the action
+		$this->_action($action);
+	}
+
+	/**
+	 * @brief Run an action that's defined in this web control.
+	 * @param $action (string) The action to run.
+	 */
+	public function _action($action) {
+		// We map requested actions directly to methods defined in the derived
+		// class.
+		if (method_exists($this, $action)) {
+			// Check the requested action to see if it's valid. Valid actions
+			// are methods that have been defined and implemented by the class
+			// that's extending a TLWebControl class. In other words, you can't
+			// call methods that are native to TLWebControl.
+			$rClass = new ReflectionClass('TLWebControl');
+			foreach($rClass->getMethods() as $method) {
+				if ($action == $method->name) {
+					throw new TLWebControlException("Cannot call an internal method", 1);
+				}
+			}
+
+			// Okay, we can continue with running the requested action. Inspect
+			// the parameters for the method that corresponds to the action so we
+			// can automatically pass them.
+			$params = array();
+			$rObj = new ReflectionObject($this);
+			$rMethod = $rObj->getMethod($action);
+			foreach($rMethod->getParameters() as $param) {
+				$paramName = $param->getName();
+				$paramValue = TLVars::import($paramName, "PG");
+				if (!$paramValue) {
+					throw new TLWebControlException("Missing data '$paramName' for action '$action'", 3);
+				}
+				$params[$paramName] = $paramValue;
+			}
+
+			// Call the method with the parameters.
+            ob_start();
+			call_user_func_array(array($this, $action), $params);
+			$output = ob_get_clean();
+		} else {
+			// Cannot map the action to a method, because it does not exist
+			throw new TLWebControlException("There is no method for the requested action '".$action."'", 2);
+		}
+
+		$this->outputBuffer .= $output;
+	}
+
+	/** 
+	 * @brief Returns the output of the action.
+	 * @return (string) The output of the action.
+	 */
+	public function _getOutputBuffer() {
+		return($this->outputBuffer);
+	}
+
+	/**
+	 * @brief Returns the output of the template, including the output of the action.
+	 * @return (string) Parsed template output.
+	 */
+	public function _getOutput() {
+        ob_start();
+        eval("?>".$this->templateContents);
+        $out = ob_get_clean();
+		return($out);
+	}
+
+	/**
+	 * @brief Parse a view
+	 * @param $filename (string) Filename of the view to parse.
+	 */
+	public function _view($filename) {
+        $contents = file_get_contents($filename);
+        if ($contents === false) {
+            throw new TLWebControlException("Cannot read view from file '$filename'", 4);
+        }
+        eval("?>".$contents);
+	}
+
+	/**
+	 * @brief Parse a view.
+	 * @param $contents (string) String (view) to parse.
+	 */
+	public function _viewString($contents) {
+        eval("?>".$contents);
+	}
+
+	/**
+	 * @brief Set a template from the contents of a file.
+	 * Templates can be used to give your website / application a generic look and feel. Templates won't be parsed until _getOutput() is called, so they can include the output of, i.e. actions.
+	 * @param $filename (string) Filename of the template to use.
+	 */
+	public function _setTemplateFromFile($filename) {
+        $contents = file_get_contents($filename);
+        if ($contents === false) {
+            throw new TLWebControlException("Cannot read template '$filename'", 3);
+        }
+		$this->templateFilename = $filename;
+        $this->templateContents = $contents;
+	}
+
+	/**
+	 * @brief Set a template from a string
+	 * Templates can be used to give your website / application a generic look and feel. Templates won't be parsed until _getOutput() is called, so they can include the output of, i.e. actions.
+	 * @param $contents (string) Template contents.
+	 */
+	public function _setTemplateFromString($contents) {
+		$this->templateContents = $contents;
+	}
+
+	/**
+	* @brief Initialisation method for the web control framework.
+	* This method will be automatically called when istantiating a new TLWebControl derived class. Implement this method to init your application. For instance, load session stuff.
+	* @param $action (string) The action that will run in the framework.
+	*/
+	abstract function _init($action);
+	
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Exceptions
+/////////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////
+// Information manipulation classes
+/////////////////////////////////////////////////////////////////////////////
 
 /**
  * @brief String manipulation class.
@@ -70,21 +509,21 @@ class TLString
 	/**
 	 * @brief Split string using a seperator and assign the resulting parts to variables.
 	 *
-     * Example:
-     * @code
-     * $foo = "foo,bar,bas";
-     * TLString::explodeAssign($foo, ",", (&foo, &$bar, &$bas) );
-     * @endcode
-     *
+	 * Example:
+	 * @code
+	 * $foo = "bar,bas,beh";
+	 * TLString::explodeAssign($foo, ",", (&bar, &$bas, &$beh) );
+	 * @endcode
+	 *
 	 * @param $string (string) String to split.
 	 * @param $seperator (char) Character to split on.
 	 * @param $vars (ass. array) Associative array containing pass-by-reference variables to which to asign the parts of the exploded string. Number of vars must be equal to the number of parts that are the result of the split (or false will be returned).
 	 * @returns True if the parts were succesfully assigned to the variables in $var. False if otherwise.
 	 * @post The values of the variables in $var will be assigned the parts that resulted from the splitting of $string.
 	 * @note Variables in $vars must be passed by reference. That is: array(&$var1, &$var2), not array($var1, $var2)!
+	 * @note DEPRECATED: Use list(). I.e. list($bar, $bas, $beh) = explode($foo);
 	 */
-	public static function explodeAssign($string, $seperator, $vars) 
-	{
+	public static function explodeAssign($string, $seperator, $vars) {
 		$temp = explode($seperator, $string);
 		if (count($temp) != count($vars)) {
 			return(false);
@@ -99,19 +538,19 @@ class TLString
 	/**
 	 * @brief Assign the elements in an array to separate variables.
 	 *
-     * @code
-     * $foo = array('bar', 'bas');
-     * TLString::arrayAssign($foo, (&$bar, &$bas) );
-     * @endcode
+	 * @code
+	 * $foo = array('bar', 'bas');
+	 * TLString::arrayAssign($foo, (&$bar, &$bas) );
+	 * @endcode
 	 *
 	 * @param $array (array) Array of which to assign elements
 	 * @param $vars (ass. array) Associative array containing pass-by-reference variables to which to asign the parts of the exploded string. Number of vars must be equal to the number of parts that are the result of the split (or false will be returned).
 	 * @returns True if the parts were succesfully assigned to the variables in $var. False if otherwise.
 	 * @post The values of the variables in $var will be assigned the values of the elements in $array
 	 * @note Variables in $vars must be passed by reference. That is: array(&$var1, &$var2), not array($var1, $var2)!
+	 * @note DEPRECATED: Use list(). I.e. list($bar, $bas) = $foo;
 	 */
-	public static function arrayAssign($array, $vars) 
-	{
+	public static function arrayAssign($array, $vars) {
 		if (count($array) != count($vars)) {
 			return(false);
 		} else {
@@ -130,8 +569,7 @@ class TLString
 	 * @note Case-sensitive.
 	 * @note If you want to check for a dash ('-'), you must escape it: isOfChars("-hey-", "a-z\-")
 	 */
-	public static function isOfChars($string, $chars) 
-	{
+	public static function isOfChars($string, $chars) {
 		return(!preg_match("/[^".preg_quote($chars, '/')."]/", $string));
 	}
 
@@ -142,8 +580,7 @@ class TLString
 	 * @returns True if $string starts with $start. False otherwise.
 	 * @note Case-sensitive.
 	 */
-	public static function startsWith($string, $start) 
-	{
+	public static function startsWith($string, $start) {
 		if (strlen($string) >= strlen($start)) {
 			if (substr($string, 0, strlen($start)) == $start) {
 				return(true);
@@ -159,8 +596,7 @@ class TLString
 	 * @returns True if $string ends with $end. False otherwise.
 	 * @note Case-sensitive.
 	 */
-	public static function endsWith($string, $end) 
-	{
+	public static function endsWith($string, $end) {
 		if (strlen($string) >= strlen($end)) {
 			if (substr($string, strlen($string)-strlen($end)) == $end) {
 				return(true);
@@ -188,8 +624,7 @@ class TLVars
 	 * @returns True if $var is 'empty'. "", null, false, 0 and an empty array are considered empty (strict type checking is enforced (===)). False if not empty.
 	 * @note To supress 'Undefined variable' errors, you should prepend the call to this method with an '@'.
 	 */
-	public static function isEmpty($var = null) 
-	{
+	public static function isEmpty($var = null) {
 		if ($var === "" || $var === null || $var === false || $var === 0 || $var === array()) {
 			return(true);
 		}
@@ -255,23 +690,178 @@ class TLVars
 	}
 }
 
-/**
- * @brief Additional control structure tools
+/** 
+ * @brief Network information manipulation class.
  */
-class TLControlStruct
+class TLNetwork
 {
 	/**
-	 * @brief Check if the calling script is included or if it is the main script being run. Comes in handy when you need to determine whether to run tests in a library or not.
-	 * @param $from (string) Pass the __FILE__ constant to this variable when you call this method.
-	 * @returns True if the caller is the main script. False  if it's just an included file.
+	 * @brief Convert a dotted netmask representation (255.255.255.0) to a bit notation (/24).
+	 * @param $nmDot (string) Dotted netmask representation (255.255.255.0)
+	 * @returns (int) Integer representation of the bits. (24)
 	 */
-	public static function isMain($from) 
+	public static function netmaskDot2Bit($nmDot) {
+		$netmask_full = 0; $netmask_full = ~$netmask_full; /* Fill netmask with binary 1's */
+		$bitnetmask = $netmask_full - ip2long($nmDot);
+		return (32-strlen(decbin($bitnetmask))); /* ugly, but working */
+	}
+
+	/**
+	 * @brief Convert a bit netmask representation (/24) to a dotted notation (255.255.255.0).
+	 * @param $nmBit (int) Bit netmask representation (24)
+	 * @returns (string) Dotted representation of the bits. (255.255.255.0)
+	 */
+	public static function netmaskBit2Dot ($nmBit) {
+		$bitnetmask_inv = pow(2, (int)(32-$nmBit)) - 1; /* I.e. /24 -> 255 */
+		$netmask_full = 0; $netmask_full = ~$netmask_full; /* Fill netmask with binary 1's */
+
+		return (long2ip($netmask_full - $bitnetmask_inv));
+	}
+}
+
+/////////////////////////////////////////////////////////////////////////////
+// Development helpers
+/////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Variable validation class
+ * 
+ * The TLValidate class offers a varying range of methods with which you can validate the values of variables. 
+ */
+class TLValidate
+{
+	/**
+	 * @brief Validate an email address
+	 * @param $email (string) String containing what might possibly be an email address
+	 * @returns (boolean) True if $email contains a valid email address. False otherwise.
+	 */
+	public static function isEmail($email) {
+		return(preg_match("/^.+@.+\.[a-zA-Z]+$/", $email));
+	}
+
+	/**
+	 * @brief Validate an hostname
+	 * @param $hostname (string) String containing what might possibly be a hostname
+	 * @returns (boolean) True if $hostname contains a valid hostname. False otherwise.
+	 */
+	public static function isHostname($hostname) {
+		return(preg_match("/^.+\.[a-zA-Z]+$/", $hostname));
+	}
+
+	/**
+	 * @brief Check if a string consists of (and only of) a bunch of characters.
+	 * @param $string (string) String to check. Must be a string otherwise return value may not be correct.
+	 * @param $chars (string) Collection of character to check for. Ranges can be defined by using a-z. 
+	 * @returns True if $string consists of (and only of) characters in $chars. False otherwise.
+	 * @note Case-sensitive.
+	 * @note If you want to check for a dash ('-'), you must escape it: isOfChars("-hey-", "a-z\-")
+	 */
+	public static function isOfChars($string, $chars) 
 	{
-		if ($from == realpath($_SERVER["SCRIPT_FILENAME"])) {
-			return(true);
+		return(TLString::isOfChars($string, $chars));
+	}
+}
+
+/**
+ * @brief Additional debugging routines
+ * 
+ * This class contains additional convenience debugging routines.
+ */
+class TLDebug {
+
+	/**
+	 * @brief Return a backtrace of all visited functions/classes as a single string where each function/method is on a new line.
+	 * Example output:
+	 * <pre>
+	 * test/debug.php:11 Test::foo(15, abc, Array(1, 2, Array))
+	 * test/debug.php:18 Test->bar()
+	 * test/debug.php:22 go()
+	 * </pre>
+	 * @param $relative (Boolean) If true (default), filenames will be shortened by making them relative to the document root.
+	 * @returns (string) A string with each function/methode call on a new line, including file, line, function/methodname and parameter info.
+	 */
+	static function backtraceString($relative = True) {
+		$out = "";
+
+		if ($relative) {
+			$docRootLen = strlen($_SERVER["DOCUMENT_ROOT"]);
 		} else {
-			return(false);
+			$docRootLen = 0;
 		}
+
+		$trace = debug_backtrace();
+		if (is_array($trace)) {
+			for ($i = 0; $i != count($trace); $i++) {
+				$stackFrame = $trace[$i];
+
+				// Skip frames relating to this class
+				if (array_key_exists("class", $stackFrame) && $stackFrame["class"] == __CLASS__) {
+					continue;
+				}
+
+				if (array_key_exists("file", $stackFrame)) { 
+					$out .= substr($stackFrame["file"], $docRootLen, strlen($stackFrame["file"]) - $docRootLen).":"; 
+				} else {
+					$out .= "??:";
+				}
+				if (array_key_exists("line", $stackFrame)) {
+					$out .= $stackFrame["line"]." ";
+				} else {
+					$out .= "?? ";
+				}
+				if (array_key_exists("class", $stackFrame)) {
+					$out .= $stackFrame["class"].$stackFrame["type"];
+				}
+				if (array_key_exists("function", $stackFrame)) {
+					$out .= $stackFrame["function"]."(";
+					$args = array();
+					if (array_key_exists("args", $stackFrame)) {
+						foreach($stackFrame["args"] as $arg) {
+							if (gettype($arg) == "array") {
+								$args[] = "Array(".@implode(", ", $arg).")";
+							} else {
+								$args[] = $arg;
+							}
+						}
+						$out .= implode(", ", $args);
+					}
+					$out .= ")";
+				}
+				$out .= "\n";
+			}
+		}
+
+		return($out);
+	}
+	
+	/**
+	 * @brief Return a backtrace of all visited functions/classes as a single, one-lined string.
+	 * Example output:
+	 * <pre>
+	 * test/debug.php:11 Test::foo(15, abc, Array(1, 2, Array)); test/debug.php:18 Test->bar(); test/debug.php:22 go(); 
+	 * </pre>
+	 * @param $relative (Boolean) If true (default), filenames will be shortened by making them relative to the document root.
+	 * @returns (string) A on-lined string including file, line, function/methodname and parameter info of each function called on the stack.
+	 */
+	static function backtraceSingleLine($relative = True) {
+		$out = TLDebug::backtraceString($relative);
+		$out = str_replace("\n", "; ", $out);
+		return($out);
+	}
+
+	/** 
+	 * @brief Set some PHP configuration options so that all errors and warnings will be shown and will be fatal.
+	 */
+	static function startPedantic() {
+		assert_options(ASSERT_ACTIVE, 1);
+		assert_options(ASSERT_WARNING, 1);
+		assert_options(ASSERT_BAIL, 1);
+		if (defined("E_STRICT")) {
+			error_reporting(E_ALL | E_STRICT);
+		} else {
+			error_reporting(E_ALL);
+		}
+		ini_set("display_errors", "1");
 	}
 }
 
@@ -360,7 +950,7 @@ class TLUnitTest {
 	private $testOutput = array();
 	private $testResults = array();
 	private $currentTest = array();
-    private $otherErros = "";
+	private $otherErros = "";
 
 	private $prevErrorReporting = 0;
 	/**
@@ -377,7 +967,7 @@ class TLUnitTest {
 		$this->run($this->testClass);
 	}
 
-	/*
+	/**
 	 * @brief Destructor.
 	 */
 	public function __destruct() {
@@ -390,13 +980,13 @@ class TLUnitTest {
 	 * @note DO NOT USE THIS, ITS FOR INTERNAL USE ONLY.
 	 */
 	public function errorHandler($errno, $errmsg, $filename, $linenum, $vars) {
-        if ($this->currentTest == array()) {
-            //$this->otherErrors .= "$filename($linenum): Error $errno: '$errmsg': ".var_export($vars, true)."\n";
-            $this->otherErrors .= "$filename($linenum): Error $errno: '$errmsg'\n";
-        } else {
-            $e = new Exception($errmsg, $errno);
-            $this->failed($e);
-        }
+		if ($this->currentTest == array()) {
+			//$this->otherErrors .= "$filename($linenum): Error $errno: '$errmsg': ".var_export($vars, true)."\n";
+			$this->otherErrors .= "$filename($linenum): Error $errno: '$errmsg'\n";
+		} else {
+			$e = new Exception($errmsg, $errno);
+			$this->failed($e);
+		}
 	}
 
 	/**
@@ -408,12 +998,12 @@ class TLUnitTest {
 	}
 
 	private function run($testClass) {
-        $props = get_object_vars($this->testClass);
-        if (array_key_exists("testNames", $props)) {
-            $hasNames = true;
-        } else {
-            $hasNames = false;
-        }
+		$props = get_object_vars($this->testClass);
+		if (array_key_exists("testNames", $props)) {
+			$hasNames = true;
+		} else {
+			$hasNames = false;
+		}
 		foreach(get_class_methods($this->testClass) as $method) {
 			if (!TLString::explodeAssign($method, "_", array(&$group, &$name))) {
 				$group = "";
@@ -440,7 +1030,7 @@ class TLUnitTest {
 			"nr"     => $this->cnt++,
 			"name"   => $testName,
 			"result" => "",
-            "dump"   => "",
+			"dump"   => "",
 		);
 		$this->passed();
 	}
@@ -468,7 +1058,7 @@ class TLUnitTest {
 	public function failed($e) {
 		$this->currentTest["passed"] = false;
 		$this->currentTest["result"] .= $e->getMessage()."\n";
-        $this->currentTest["dump"] .= $e->getMessage()."\n";
+		$this->currentTest["dump"] .= $e->getMessage()."\n";
 		foreach($e->getTrace() as $stackFrame) {
 			if (array_key_exists("file", $stackFrame)) {
 				$this->currentTest["dump"] .= "  ".
@@ -486,9 +1076,9 @@ class TLUnitTest {
 						foreach($stackFrame["args"] as $arg) {
 							$this->currentTest["dump"] .= $arg.", ";
 						}
-                        if (substr($this->currentTest["dump"], -2) == ", ") {
-                            $this->currentTest["dump"] = substr($this->currentTest["dump"], 0, -2);
-                        }
+						if (substr($this->currentTest["dump"], -2) == ", ") {
+							$this->currentTest["dump"] = substr($this->currentTest["dump"], 0, -2);
+						}
 					}
 					if (array_key_exists("function", $stackFrame)) {
 						$this->currentTest["dump"] .= ")";
@@ -595,8 +1185,8 @@ class TLUnitTest {
 					<tr><th>Failed:</th><td>".$nrOfFailed."</td></tr>
 				</table>
 				<h2>Non-testcase errors</h2>
-                <pre>\n".$this->otherErrors."
-                </pre>
+				<pre>\n".$this->otherErrors."
+				</pre>
 			</html>
 		";
 
@@ -629,106 +1219,26 @@ class TLUnitTest {
 	}
 }
 
+/////////////////////////////////////////////////////////////////////////////
+// Misc
+/////////////////////////////////////////////////////////////////////////////
+
 /**
- * @brief Additional debugging routines
- * 
- * This class contains additional convenience debugging routines.
+ * @brief Additional control structure tools
  */
-class TLDebug {
-
+class TLControlStruct
+{
 	/**
-	 * @brief Return a backtrace of all visited functions/classes as a single string where each function/method is on a new line.
-	 * Example output:
-	 * <pre>
-	 * test/debug.php:11 Test::foo(15, abc, Array(1, 2, Array))
-	 * test/debug.php:18 Test->bar()
-	 * test/debug.php:22 go()
-	 * </pre>
-	 * @param $relative (Boolean) If true (default), filenames will be shortened by making them relative to the document root.
-	 * @return (string) A string with each function/methode call on a new line, including file, line, function/methodname and parameter info.
+	 * @brief Check if the calling script is included or if it is the main script being run. Comes in handy when you need to determine whether to run tests in a library or not.
+	 * @param $from (string) Pass the __FILE__ constant to this variable when you call this method.
+	 * @returns True if the caller is the main script. False  if it's just an included file.
 	 */
-	static function backtraceString($relative = True) {
-		$out = "";
-
-		if ($relative) {
-			$docRootLen = strlen($_SERVER["DOCUMENT_ROOT"]);
+	public static function isMain($from) {
+		if ($from == realpath($_SERVER["SCRIPT_FILENAME"])) {
+			return(true);
 		} else {
-			$docRootLen = 0;
+			return(false);
 		}
-
-		$trace = debug_backtrace();
-		if (is_array($trace)) {
-			for ($i = 0; $i != count($trace); $i++) {
-				$stackFrame = $trace[$i];
-
-				// Skip frames relating to this class
-				if (array_key_exists("class", $stackFrame) && $stackFrame["class"] == __CLASS__) {
-					continue;
-				}
-
-				if (array_key_exists("file", $stackFrame)) { 
-					$out .= substr($stackFrame["file"], $docRootLen, strlen($stackFrame["file"]) - $docRootLen).":"; 
-				} else {
-					$out .= "??:";
-				}
-				if (array_key_exists("line", $stackFrame)) {
-					$out .= $stackFrame["line"]." ";
-				} else {
-					$out .= "?? ";
-				}
-				if (array_key_exists("class", $stackFrame)) {
-					$out .= $stackFrame["class"].$stackFrame["type"];
-				}
-				if (array_key_exists("function", $stackFrame)) {
-					$out .= $stackFrame["function"]."(";
-					$args = array();
-					if (array_key_exists("args", $stackFrame)) {
-						foreach($stackFrame["args"] as $arg) {
-							if (gettype($arg) == "array") {
-								$args[] = "Array(".@implode(", ", $arg).")";
-							} else {
-								$args[] = $arg;
-							}
-						}
-						$out .= implode(", ", $args);
-					}
-					$out .= ")";
-				}
-				$out .= "\n";
-			}
-		}
-
-		return($out);
-	}
-	
-	/**
-	 * @brief Return a backtrace of all visited functions/classes as a single, one-lined string.
-	 * Example output:
-	 * <pre>
-	 * test/debug.php:11 Test::foo(15, abc, Array(1, 2, Array)); test/debug.php:18 Test->bar(); test/debug.php:22 go(); 
-	 * </pre>
-	 * @param $relative (Boolean) If true (default), filenames will be shortened by making them relative to the document root.
-	 * @return (string) A on-lined string including file, line, function/methodname and parameter info of each function called on the stack.
-	 */
-	static function backtraceSingleLine($relative = True) {
-		$out = TLDebug::backtraceString($relative);
-		$out = str_replace("\n", "; ", $out);
-		return($out);
-	}
-
-	/** 
-	 * @brief Set some PHP configuration options so that all errors and warnings will be shown and will be fatal.
-	 */
-	static function startPedantic() {
-		assert_options(ASSERT_ACTIVE, 1);
-		assert_options(ASSERT_WARNING, 1);
-		assert_options(ASSERT_BAIL, 1);
-		if (defined("E_STRICT")) {
-			error_reporting(E_ALL | E_STRICT);
-		} else {
-			error_reporting(E_ALL);
-		}
-		ini_set("display_errors", "1");
 	}
 }
 
@@ -794,53 +1304,12 @@ class TLTypeException extends Exception {
 }
 
 /**
- * @brief Built-in exception for value errors.
- * This exception can be thrown when a variable is expected to have a certain value or adhere to certain criteria, but it does not.
- * 
- * Example:
- * @code
- * function setAge($age) {
- *   if ($age < 5 || $age > 120)) {
- *     throw new ValueException("Age too small or large", $age, "age");
- *   }
- *   print("You're age is $age");
- * }
- * function setEMail($address) {
- *   if (strpos("@", $address) === False) {
- *     throw new ValueException("Should contain '@' char", $address, "address");
- * }
- * setAge(3);
- * setEmail("f dot boender at zx dot nl");
- * @endcode
- *
- * Results in:
- * 
- * <pre>
- * Uncaught exception 'ValueException' with message '$age(3): Age too small or large' in [stacktrace]
- * Uncaught exception 'ValueException' with message '$address(f dot boender at zx dot nl): Should contain '@' char' in [stacktrace]
- * </pre>
- */
-class TLValueException extends Exception {
-
-	/**
-	 * @brief Construct a new ValueException 
-	 * @param $message (string) The message which describes the value problem.
-	 * @param $gotVar (mixed) The variable you got which did not follow expectations.
-	 * @param $varName (string) The name of the variable (without the $ prepended) you got which did not follow expectations.
-	 */
-	public function __construct($message, $gotVar, $varName) {
-		$message = sprintf("\"$%s(%s)\": %s", $varName, $gotVar, $message);
-		parent::__construct($message);
-	}
-}
-
-/**
  * @brief Default exception for SQL problems.
  * If a query problem arises (mysql_query() returns false for instance), throw this exception with the mysql_error() and the query as parameters.
  * 
  * Example:
  * @code
- *  $qry = "INSERT INTO foo VALUES (10, 'bar');
+ *  $qry = "INSERT INTO foo VALUES (10, 'bar');";
  *  $res = mysql_query($qry);
  *  if (!$res) { throw new SQLException(mysql_error(), $qry); }
  * @endcode
@@ -859,224 +1328,84 @@ class TLSQLException extends Exception {
 
 	/**
 	 * @brief Return the query that caused this exception to be thrown.
-	 * @return (string) The query that caused this exception to be thrown.
+	 * @returns (string) The query that caused this exception to be thrown.
 	 */
 	public function getQuery() {
 		return($this->query);
 	}
 }
 
-
 /**
- * @brief Self-referring URL helper class
- * This class provides various methods for refering to the current
- * server/host/URL/etc. It provides abstractions against HTTP/HTTPS usage,
- * ports and parameters. 
- *
- * Examples:
+ * @brief Built-in exception for value errors.
+ * This exception can be thrown when a variable is expected to have a certain value or adhere to certain criteria, but it does not.
+ * 
+ * Example:
  * @code
- * $s = new SelfURL();
- * print ($s->getServerURL());
- * print ($s->getAbsolutePathURL());
- * print ($s->getAbsoluteScriptURL());
- * print ($s->getAbsoluteFullURL());
- * print ($s->getAbsoluteFullURL("strip_"));
- * print ($s->getRelativePathURL());
- * print ($s->getRelativeScriptURL());
- * print ($s->getRelativeFullURL());
- * print ($s->getRelativeFullURL("strip_"));
+ * function setAge($age) {
+ *   if ($age < 5 || $age > 120)) {
+ *     throw new ValueException("Age too small or large", $age, "age");
+ *   }
+ *   print("You're age is $age");
+ * }
+ * function setEMail($address) {
+ *   if (strpos("@", $address) === False) {
+ *     throw new ValueException("Should contain '@' char", $address, "address");
+ * }
+ * setAge(3);
+ * setEmail("f dot boender at zx dot nl");
+ *
+ * try {
+ *   setAge(3);
+ * } catch (TLValueException $e) {
+ *   print($e->getVarMessage());
+ * }
  * @endcode
  *
- * With the following URL: http://example.com/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar
- * Outputs:
+ * Results in:
+ * 
  * <pre>
- * http://example.com
- * http://example.com/svcmon
- * http://example.com/svcmon/class.url.php
- * http://example.com/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar
- * http://example.com/svcmon/class.url.php?name=ferry&age=26
- * /svcmon
- * /svcmon/class.url.php
- * /svcmon/class.url.php?name=ferry&age=26&strip_foo=bar
- * /svcmon/class.url.php?name=ferry&age=26
+ * Uncaught exception 'TLValueException' with message 'Age too small or large' in [stacktrace]
+ * Uncaught exception 'TLValueException' with message 'Should contain '@' char' in [stacktrace]
+ * Uncaught exception 'TLValueException' with message 'Age too small or large' in [stacktrace]
  * </pre>
  */
-class TLSelfURL {
-	
-	public $type = "";     /**< Type of the URL (http or https) */
-	public $host = "";     /**< The hostname as found in the URL */
-	public $port = "";     /**< The port that was used to connect */
-	public $path = "";     /**< The full path to the script without the script name itself */
-	public $script = "";   /**< The script name */
-	public $params = null; /**< Any parameters that where given on the URL */
+class TLValueException extends Exception {
 
 	/**
-	 * @brief Constructor.
+	 * @brief Construct a new ValueException 
+	 * @param $message (string) The message which describes the value problem.
+	 * @param $varValue (mixed) The variable you got which did not follow expectations.
+	 * @param $varName (string) The name of the variable (without the $ prepended) you got which did not follow expectations.
 	 */
-	public function __construct() {
-		if (array_key_exists("HTTPS", $_SERVER)) {
-			$this->type = "https";
-		} else {
-			$this->type = "http";
-		}
-
-		// Get raw data
-		if (!array_key_exists("HTTP_HOST", $_SERVER)) {
-			throw new Exception("Not running on a HTTP server");
-		}
-
-		$this->host = $_SERVER["HTTP_HOST"];
-		$this->port = $_SERVER["SERVER_PORT"];
-		$this->path = dirname($_SERVER["PHP_SELF"]);
-		$this->script = basename($_SERVER["PHP_SELF"]);
-
-		$this->params = $_REQUEST;
-		if (array_key_exists("PHPSESSID", $this->params)) {
-			// Work around PHP's idiotic definition of developer-friendly nonsense.
-			unset($this->params["PHPSESSID"]);
-		}
-
-		// Verify and correct raw data
-		if (strlen($this->path) == 0 || $this->path[0] != '/') {
-			$this->path = '/'.$this->path;
-		}
-		if ($this->path[strlen($this->path) - 1] == '/') {
-			$this->path = substr($this->path, 0, strlen($this->path) - 1);
-		}
-		
-		assert($this->self_check());
+	public function __construct($message, $varValue, $varName) {
+		parent::__construct($message);
+		$this->varMessage = sprintf("\"$%s(%s)\": %s", $varName, $varValue, $message);
+		$this->varName = $varName;
+		$this->varValue = $varValue;
 	}
 
 	/**
-	 * Returns the server URL. I.e. "https://example.com". If a non-default
-	 * port was used (not 80 for http or not 443 for https), the port number
-	 * will be appended to the URL.
-	 * @return (string) Server URL
+	 * @brief Get a message containing variable information
+	 * @returns (string) Full message containing variable information and the message
 	 */
-	public function getServerURL() {
-		$serverURL = $this->type."://".$this->host;
-		if ($this->port != "80" && $this->port != "443") {
-			$serverURL .= ":" . $this->port;
-		}
-		return($serverURL);
+	public function getVarMessage() {
+		return($this->varMessage);
 	}
 
 	/**
-	 * Returns the absolute URL upto and including the path to the script (but
-	 * not the script name itself). I.e. "http://example.com/svcmon". Does not
-	 * append a trailing backslash.
-	 * @return (string) Server URL + Pathname
+	 * @brief Get the name of the variable that caused the error 
+	 * @returns (string) The variable name that caused the error (without the leading $)
 	 */
-	public function getAbsolutePathURL() {
-		$pathURL = $this->getServerURL();
-		$pathURL .= $this->path;
-		return($pathURL);
+	public final function getVarName() {
+		return($this->varName);
 	}
 
 	/**
-	 * Returns the relative (to the Server URL) URL upto and including the path
-	 * to the script (but not the script name itself). I.e. "/svcmon". Does not
-	 * append a trailing slash. Always starts with a slash.
-	 * @return (string) Pathname
+	 * @brief Get the contents of the variable that caused the error.
+	 * @returns (mixed) The contents of the variable that caused the error.
 	 */
-	public function getRelativePathURL() {
-		$pathURL = $this->path;
-		return($pathURL);
-	}
-
-	/** 
-	 * Returns the absolute URL upto and including the script name. I.e.
-	 * "http://example.com/svcmon/class.url.php". 
-	 * @return (string) Server URL + Pathname + Scriptname.
-	 */
-	public function getAbsoluteScriptURL() {
-		$scriptURL = $this->getServerURL();
-		$scriptURL .= $this->path . '/' . $this->script;
-		return($scriptURL);
-	}
-
-	/** 
-	 * Returns the relative (to the Server URL) URL upto and including the
-	 * script name. I.e.  "/svcmon/class.url.php". Always starts with a slash.
-	 * @return (string) Server URL + Pathname + Scriptname.
-	 */
-	public function getRelativeScriptURL() {
-		$scriptURL = $this->path . '/' . $this->script;
-		return($scriptURL);
-	}
-
-	/**
-	 * Returns a serialized form of the parameters of the URL. I.e. :
-	 * "name=ferry&age=26&strip_foo=bar". If stripVarsPrefix is set, any
-	 * variable starting with $stripVarsPrefix will not be included in the
-	 * serialized parameters.
-	 * @param stripVarsPrefix (string) Prefix of variables that need to be removed from the final result.
-	 * @return Serialized parameters
-	 */
-	public function getParams($stripVarsPrefix = null) {
-		$paramsString = "";
-
-		// Only process params if there are any
-		if (count($this->params) > 0) {
-			// Create a duplicate of the params and remove unwanted ones
-			if ($stripVarsPrefix != null) {
-				$vars = $this->params;
-				$prefixLen = strlen($stripVarsPrefix);
-				foreach(array_keys($vars) as $key) {
-					if (substr($key, 0, $prefixLen) == $stripVarsPrefix) {
-						unset($vars[$key]);
-					}
-				}
-				$paramsString .= "?".http_build_query($vars);
-			} else {
-				$paramsString .= "?".http_build_query($this->params);
-			}
-		}
-
-		return($paramsString);
-	}
-
-	/** 
-	 * Returns the absolute URL upto and including the serialized parameters. I.e.
-	 * "http://example.com/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar". 
-	 * @return (string) Server URL + Pathname + Scriptname + Serialized Params.
-	 */
-	public function getAbsoluteFullURL($stripVarsPrefix = null) {
-		$fullURL = $this->getAbsoluteScriptURL();
-		$fullURL .= $this->getParams($stripVarsPrefix);
-
-		return($fullURL);
-	}
-
-	/** 
-	 * Returns the relative URL upto and including the serialized parameters. I.e.
-	 * "/svcmon/class.url.php?name=ferry&age=26&strip_foo=bar". Always starts
-	 * with a slash.
-	 * @return (string) Pathname + Scriptname + Serialized Params.
-	 */
-	public function getRelativeFullURL($stripVarsPrefix = null) {
-		$fullURL = $this->getRelativeScriptURL();
-		$fullURL .= $this->getParams($stripVarsPrefix);
-		return($fullURL);
-	}
-
-	/**
-	 * Verify that this object was constructed properly and that all values are
-	 * intelligible. This is a purely defensive-coding practice. It can be
-	 * turned off once this code is considered stable (which is never).
-	 */
-	private function self_check() {
-		if (
-			$this->type == "" || 
-			$this->host == "" || 
-			$this->port == "" || 
-			$this->path == "" || 
-			$this->script == "" || 
-			$this->params == "") {
-				return(false);
-		} else {
-			return(true);
-		}
+	public final function getVarValue() {
+		return($this->varValue);
 	}
 }
 
