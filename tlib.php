@@ -434,6 +434,7 @@ abstract class TLWebControl
 	 */
 	public function _getOutput() {
         ob_start();
+		// FIXME: Syntax check eval using Parsekit
         eval("?>".$this->templateContents);
         $out = ob_get_clean();
 		return($out);
@@ -448,6 +449,7 @@ abstract class TLWebControl
         if ($contents === false) {
             throw new TLWebControlException("Cannot read view from file '$filename'", 4);
         }
+		// FIXME: Syntax check eval using Parsekit
         eval("?>".$contents);
 	}
 
@@ -456,6 +458,7 @@ abstract class TLWebControl
 	 * @param $contents (string) String (view) to parse.
 	 */
 	public function _viewString($contents) {
+		// FIXME: Syntax check eval using Parsekit
         eval("?>".$contents);
 	}
 
