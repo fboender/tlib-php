@@ -39,6 +39,7 @@
 
 /**
  * @brief Self-referring URL helper class
+ *
  * This class provides various methods for refering to the current
  * server/host/URL/etc. It provides abstractions against HTTP/HTTPS usage,
  * ports and parameters. 
@@ -362,9 +363,9 @@ abstract class TLWebControl
 	 * @param $defaultAction (string) The default action to run if no action has been specified.
 	 */
 	public function __construct($defaultAction) {
-        // Find the current action
-        $this->defaultAction = $defaultAction;
-        $action = TLVars::import("action", "GP", $defaultAction);
+		// Find the current action
+		$this->defaultAction = $defaultAction;
+		$action = TLVars::import("action", "GP", $defaultAction);
 
 		// Call the init function so the implementor can initialize sessions 'n
 		// stuff.
@@ -409,7 +410,7 @@ abstract class TLWebControl
 			}
 
 			// Call the method with the parameters.
-            ob_start();
+			ob_start();
 			call_user_func_array(array($this, $action), $params);
 			$output = ob_get_clean();
 		} else {
@@ -433,10 +434,10 @@ abstract class TLWebControl
 	 * @return (string) Parsed template output.
 	 */
 	public function _getOutput() {
-        ob_start();
+		ob_start();
 		// FIXME: Syntax check eval using Parsekit
-        eval("?>".$this->templateContents);
-        $out = ob_get_clean();
+		eval("?>".$this->templateContents);
+		$out = ob_get_clean();
 		return($out);
 	}
 
@@ -445,12 +446,12 @@ abstract class TLWebControl
 	 * @param $filename (string) Filename of the view to parse.
 	 */
 	public function _view($filename) {
-        $contents = file_get_contents($filename);
-        if ($contents === false) {
-            throw new TLWebControlException("Cannot read view from file '$filename'", 4);
-        }
+		$contents = file_get_contents($filename);
+		if ($contents === false) {
+			throw new TLWebControlException("Cannot read view from file '$filename'", 4);
+		}
 		// FIXME: Syntax check eval using Parsekit
-        eval("?>".$contents);
+		eval("?>".$contents);
 	}
 
 	/**
@@ -459,25 +460,27 @@ abstract class TLWebControl
 	 */
 	public function _viewString($contents) {
 		// FIXME: Syntax check eval using Parsekit
-        eval("?>".$contents);
+		eval("?>".$contents);
 	}
 
 	/**
 	 * @brief Set a template from the contents of a file.
+	 *
 	 * Templates can be used to give your website / application a generic look and feel. Templates won't be parsed until _getOutput() is called, so they can include the output of, i.e. actions.
 	 * @param $filename (string) Filename of the template to use.
 	 */
 	public function _setTemplateFromFile($filename) {
-        $contents = file_get_contents($filename);
-        if ($contents === false) {
-            throw new TLWebControlException("Cannot read template '$filename'", 3);
-        }
+		$contents = file_get_contents($filename);
+		if ($contents === false) {
+			throw new TLWebControlException("Cannot read template '$filename'", 3);
+		}
 		$this->templateFilename = $filename;
-        $this->templateContents = $contents;
+		$this->templateContents = $contents;
 	}
 
 	/**
 	 * @brief Set a template from a string
+	 *
 	 * Templates can be used to give your website / application a generic look and feel. Templates won't be parsed until _getOutput() is called, so they can include the output of, i.e. actions.
 	 * @param $contents (string) Template contents.
 	 */
@@ -487,6 +490,7 @@ abstract class TLWebControl
 
 	/**
 	* @brief Initialisation method for the web control framework.
+	*
 	* This method will be automatically called when istantiating a new TLWebControl derived class. Implement this method to init your application. For instance, load session stuff.
 	* @param $action (string) The action that will run in the framework.
 	*/
@@ -497,6 +501,177 @@ abstract class TLWebControl
 /////////////////////////////////////////////////////////////////////////////
 // Exceptions
 /////////////////////////////////////////////////////////////////////////////
+
+/**
+ * @brief Built-in exception for type errors.
+ *
+ * This exception can be thrown when a variable is expected to have a certain type, but the type does not match.
+ * 
+ * Example:
+ * @code
+ * function setAge($age) {
+ *   if (!is_int($age)) {
+ *     throw new TypeException("int", $age, "age");
+ *   }
+ *   print("You're age is $age");
+ * }
+ * function setPerson($person) {
+ *   if (!is_object($person) || get_class($person) != "Person") {
+ *     throw new TypeException("object(Person)", $person, "person");
+ *   }
+ * }
+ * setAge("fourty");
+ * $monkey = new Animal("Monkey");
+ * setPerson($monkey);
+ * @endcode
+ *
+ * Results in:
+ * 
+ * <pre>
+ *    Uncaught exception 'TypeException' with message 'Expected "int", got "string(fourty)"' in [stacktrace]
+ *    Uncaught exception 'TypeException' with message 'Expected "object(Person)", got "object(Monkey)"' in [stacktrace]
+ * </pre>
+ */
+class TLTypeException extends Exception {
+
+	/**
+	 * @brief Construct a new TypeException
+	 * @param $expectedType (string) The type you where expecting (int, string, object(ClassType))
+	 * @param $gotVar (mixed) The variable you got who's type didn't match.
+	 * @param $varName (string) The name of the variable you got who's type didn't match.
+	 */
+	public function __construct($expectedType, $gotVar, $varName = null) {
+		
+		$this->expectedType = $expectedType; // The type the caller expected to get
+		$this->type = gettype($gotVar);      // The type of the variable which the caller got
+		if ($varName != null) {
+			$this->name = $varName;              // The name of the variable which the caller got
+		}
+		if (is_object($gotVar)) {
+		$this->value = get_class($gotVar);
+		$this->class = get_class($gotVar);   // The class of the variable which the caller got
+		} else {
+			$this->value = $gotVar;
+		}
+
+		if (isset($this->name)) {
+			$message = sprintf("Expected \"%s\", got \"%s(%s)\" for variable \"%s\"", $this->expectedType, $this->type, $this->value, $this->name);
+		} else {
+			$message = sprintf("Expected \"%s\", got \"%s(%s)\"", $this->expectedType, $this->type, $this->value);
+		}
+
+		parent::__construct($message);
+	}
+}
+
+/**
+ * @brief Default exception for SQL problems.
+ *
+ * If a query problem arises (mysql_query() returns false for instance), throw this exception with the mysql_error() and the query as parameters.
+ * 
+ * Example:
+ * @code
+ *  $qry = "INSERT INTO foo VALUES (10, 'bar');";
+ *  $res = mysql_query($qry);
+ *  if (!$res) { throw new SQLException(mysql_error(), $qry); }
+ * @endcode
+ */
+class TLSQLException extends Exception {
+
+	/**
+	 * @brief Construct a new SQLException
+	 * @param $message (string) The message for the exception. Usually the return value of mysql_error() is passed here.
+	 * @param $query (string) The query which contained the caused the error.
+	 */
+	public function __construct($message, $query = "") {
+		$this->message = $message;
+		$this->query = $query;
+	}
+
+	/**
+	 * @brief Return the query that caused this exception to be thrown.
+	 * @returns (string) The query that caused this exception to be thrown.
+	 */
+	public function getQuery() {
+		return($this->query);
+	}
+}
+
+/**
+ * @brief Built-in exception for value errors.
+ *
+ * This exception can be thrown when a variable is expected to have a certain value or adhere to certain criteria, but it does not.
+ * 
+ * Example:
+ * @code
+ * function setAge($age) {
+ *   if ($age < 5 || $age > 120)) {
+ *     throw new ValueException("Age too small or large", $age, "age");
+ *   }
+ *   print("You're age is $age");
+ * }
+ * function setEMail($address) {
+ *   if (strpos("@", $address) === False) {
+ *     throw new ValueException("Should contain '@' char", $address, "address");
+ * }
+ * setAge(3);
+ * setEmail("f dot boender at zx dot nl");
+ *
+ * try {
+ *   setAge(3);
+ * } catch (TLValueException $e) {
+ *   print($e->getVarMessage());
+ * }
+ * @endcode
+ *
+ * Results in:
+ * 
+ * <pre>
+ * Uncaught exception 'TLValueException' with message 'Age too small or large' in [stacktrace]
+ * Uncaught exception 'TLValueException' with message 'Should contain '@' char' in [stacktrace]
+ * Uncaught exception 'TLValueException' with message 'Age too small or large' in [stacktrace]
+ * </pre>
+ */
+class TLValueException extends Exception {
+
+	/**
+	 * @brief Construct a new ValueException 
+	 * @param $message (string) The message which describes the value problem.
+	 * @param $varValue (mixed) The variable you got which did not follow expectations.
+	 * @param $varName (string) The name of the variable (without the $ prepended) you got which did not follow expectations.
+	 */
+	public function __construct($message, $varValue, $varName) {
+		parent::__construct($message);
+		$this->varMessage = sprintf("\"$%s(%s)\": %s", $varName, $varValue, $message);
+		$this->varName = $varName;
+		$this->varValue = $varValue;
+	}
+
+	/**
+	 * @brief Get a message containing variable information
+	 * @returns (string) Full message containing variable information and the message
+	 */
+	public function getVarMessage() {
+		return($this->varMessage);
+	}
+
+	/**
+	 * @brief Get the name of the variable that caused the error 
+	 * @returns (string) The variable name that caused the error (without the leading $)
+	 */
+	public final function getVarName() {
+		return($this->varName);
+	}
+
+	/**
+	 * @brief Get the contents of the variable that caused the error.
+	 * @returns (mixed) The contents of the variable that caused the error.
+	 */
+	public final function getVarValue() {
+		return($this->varValue);
+	}
+}
+
 
 /////////////////////////////////////////////////////////////////////////////
 // Information manipulation classes
@@ -608,6 +783,85 @@ class TLString
 		return(false);
 	}
 }
+
+/**
+ * @brief Work with a range between two dates.
+ *
+ */
+class TLDateRange {
+    protected $fromTS= null; /**< From timestamp */
+    protected $toTS = null;  /**< To timetamp */
+
+	/**
+	 * @brief Create a new TLDateRange object.
+	 * @param $fromTS (int) Timestamp for date to start with.
+	 * @param $toTS (int) Timestamp for date to end with.
+	 */
+    public function __construct($fromTS, $toTS) {
+        $this->fromTS = $fromTS;
+        $this->toTS   = $toTS;
+        $this->fromDateInfo = getdate($this->fromTS);
+        $this->toDateInfo = getdate($this->toTS);
+    }
+
+    /**
+     * @brief Return an array with the years that fromTS and toTS span.
+	 * @returns Array with the years from fromTS upto and including toTS. 
+     */
+    public function getYears() {
+        $years = range($this->fromDateInfo["year"], $this->toDateInfo["year"]);
+        return($years);
+    }
+
+    /**
+     * @brief Return an array with timestamps for the years that fromTS and toTS span where the timestamp is exactelly on the month, day, hour, minute and second of the starting timestamp.
+     */
+    public function getYearsTS() {
+        $years = $this->getYears();
+        $timestamps = array();
+        foreach($years as $year) {
+            $timestamps[] = mktime(
+                $this->fromDateInfo["hours"],
+                $this->fromDateInfo["minutes"],
+                $this->fromDateInfo["seconds"],
+                $this->fromDateInfo["mon"],
+                $this->fromDateInfo["mday"],
+                $year
+            );
+        }
+        return($timestamps);
+    }
+
+    /**
+     * @brief Return an array with timestamps for the years that fromTS and toTS span where the timestamp is exactelly from midnight at the first dayof the years that span.
+     */
+    public function getYearsTSFull() {
+        $years = $this->getYears();
+        $timestamps = array();
+        foreach($years as $year) {
+            $timestamps[] = mktime(0, 0, 0, 1, 1, $year);
+        }
+        return($timestamps);
+    }
+
+    /**
+     * @brief Return an array with timestamps for all the days from fromTS to toTS where the timestamp is exactelly from midminght on each day.
+     */
+    public function getDaysTSFull() {
+        var_dump($this->fromDateInfo);
+        $firstDay = mktime(0, 0, 0, $this->fromDateInfo["mon"], $this->fromDateInfo["mday"], $this->fromDateInfo["year"]);
+        $lastDay = mktime(0, 0, 0, $this->toDateInfo["mon"], $this->toDateInfo["mday"], $this->toDateInfo["year"]);
+        $currentDay = $firstDay;
+        $timestamps = array($currentDay);
+        while ($currentDay < $lastDay) {
+            $nextDay = strtotime("+1 day", $currentDay);
+            $currentDay = $nextDay;
+            $timestamps[] = $currentDay;
+        }
+        return($timestamps);
+    }
+}
+
 
 /**
  * @brief Variable manipulation and tool class.
@@ -774,6 +1028,7 @@ class TLDebug {
 
 	/**
 	 * @brief Return a backtrace of all visited functions/classes as a single string where each function/method is on a new line.
+	 *
 	 * Example output:
 	 * <pre>
 	 * test/debug.php:11 Test::foo(15, abc, Array(1, 2, Array))
@@ -839,6 +1094,7 @@ class TLDebug {
 	
 	/**
 	 * @brief Return a backtrace of all visited functions/classes as a single, one-lined string.
+	 *
 	 * Example output:
 	 * <pre>
 	 * test/debug.php:11 Test::foo(15, abc, Array(1, 2, Array)); test/debug.php:18 Test->bar(); test/debug.php:22 go(); 
@@ -1242,173 +1498,6 @@ class TLControlStruct
 		} else {
 			return(false);
 		}
-	}
-}
-
-/**
- * @brief Built-in exception for type errors.
- * This exception can be thrown when a variable is expected to have a certain type, but the type does not match.
- * 
- * Example:
- * @code
- * function setAge($age) {
- *   if (!is_int($age)) {
- *     throw new TypeException("int", $age, "age");
- *   }
- *   print("You're age is $age");
- * }
- * function setPerson($person) {
- *   if (!is_object($person) || get_class($person) != "Person") {
- *     throw new TypeException("object(Person)", $person, "person");
- *   }
- * }
- * setAge("fourty");
- * $monkey = new Animal("Monkey");
- * setPerson($monkey);
- * @endcode
- *
- * Results in:
- * 
- * <pre>
- *    Uncaught exception 'TypeException' with message 'Expected "int", got "string(fourty)"' in [stacktrace]
- *    Uncaught exception 'TypeException' with message 'Expected "object(Person)", got "object(Monkey)"' in [stacktrace]
- * </pre>
- */
-class TLTypeException extends Exception {
-
-	/**
-	 * @brief Construct a new TypeException
-	 * @param $expectedType (string) The type you where expecting (int, string, object(ClassType))
-	 * @param $gotVar (mixed) The variable you got who's type didn't match.
-	 * @param $varName (string) The name of the variable you got who's type didn't match.
-	 */
-	public function __construct($expectedType, $gotVar, $varName = null) {
-		
-		$this->expectedType = $expectedType; // The type the caller expected to get
-		$this->type = gettype($gotVar);      // The type of the variable which the caller got
-		if ($varName != null) {
-			$this->name = $varName;              // The name of the variable which the caller got
-		}
-		if (is_object($gotVar)) {
-		$this->value = get_class($gotVar);
-		$this->class = get_class($gotVar);   // The class of the variable which the caller got
-		} else {
-			$this->value = $gotVar;
-		}
-
-		if (isset($this->name)) {
-			$message = sprintf("Expected \"%s\", got \"%s(%s)\" for variable \"%s\"", $this->expectedType, $this->type, $this->value, $this->name);
-		} else {
-			$message = sprintf("Expected \"%s\", got \"%s(%s)\"", $this->expectedType, $this->type, $this->value);
-		}
-
-		parent::__construct($message);
-	}
-}
-
-/**
- * @brief Default exception for SQL problems.
- * If a query problem arises (mysql_query() returns false for instance), throw this exception with the mysql_error() and the query as parameters.
- * 
- * Example:
- * @code
- *  $qry = "INSERT INTO foo VALUES (10, 'bar');";
- *  $res = mysql_query($qry);
- *  if (!$res) { throw new SQLException(mysql_error(), $qry); }
- * @endcode
- */
-class TLSQLException extends Exception {
-
-	/**
-	 * @brief Construct a new SQLException
-	 * @param $message (string) The message for the exception. Usually the return value of mysql_error() is passed here.
-	 * @param $query (string) The query which contained the caused the error.
-	 */
-	public function __construct($message, $query = "") {
-		$this->message = $message;
-		$this->query = $query;
-	}
-
-	/**
-	 * @brief Return the query that caused this exception to be thrown.
-	 * @returns (string) The query that caused this exception to be thrown.
-	 */
-	public function getQuery() {
-		return($this->query);
-	}
-}
-
-/**
- * @brief Built-in exception for value errors.
- * This exception can be thrown when a variable is expected to have a certain value or adhere to certain criteria, but it does not.
- * 
- * Example:
- * @code
- * function setAge($age) {
- *   if ($age < 5 || $age > 120)) {
- *     throw new ValueException("Age too small or large", $age, "age");
- *   }
- *   print("You're age is $age");
- * }
- * function setEMail($address) {
- *   if (strpos("@", $address) === False) {
- *     throw new ValueException("Should contain '@' char", $address, "address");
- * }
- * setAge(3);
- * setEmail("f dot boender at zx dot nl");
- *
- * try {
- *   setAge(3);
- * } catch (TLValueException $e) {
- *   print($e->getVarMessage());
- * }
- * @endcode
- *
- * Results in:
- * 
- * <pre>
- * Uncaught exception 'TLValueException' with message 'Age too small or large' in [stacktrace]
- * Uncaught exception 'TLValueException' with message 'Should contain '@' char' in [stacktrace]
- * Uncaught exception 'TLValueException' with message 'Age too small or large' in [stacktrace]
- * </pre>
- */
-class TLValueException extends Exception {
-
-	/**
-	 * @brief Construct a new ValueException 
-	 * @param $message (string) The message which describes the value problem.
-	 * @param $varValue (mixed) The variable you got which did not follow expectations.
-	 * @param $varName (string) The name of the variable (without the $ prepended) you got which did not follow expectations.
-	 */
-	public function __construct($message, $varValue, $varName) {
-		parent::__construct($message);
-		$this->varMessage = sprintf("\"$%s(%s)\": %s", $varName, $varValue, $message);
-		$this->varName = $varName;
-		$this->varValue = $varValue;
-	}
-
-	/**
-	 * @brief Get a message containing variable information
-	 * @returns (string) Full message containing variable information and the message
-	 */
-	public function getVarMessage() {
-		return($this->varMessage);
-	}
-
-	/**
-	 * @brief Get the name of the variable that caused the error 
-	 * @returns (string) The variable name that caused the error (without the leading $)
-	 */
-	public final function getVarName() {
-		return($this->varName);
-	}
-
-	/**
-	 * @brief Get the contents of the variable that caused the error.
-	 * @returns (mixed) The contents of the variable that caused the error.
-	 */
-	public final function getVarValue() {
-		return($this->varValue);
 	}
 }
 
