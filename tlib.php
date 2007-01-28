@@ -30,6 +30,7 @@
  * 
  * <h2>Misc</h2>
  * - TLControlStruct: Additional control structure tools.
+ * - TLDateRange: Work with stuff between two dates.
  * 
  * TLib-PHP is released under the BSD license. For more information, see
  * the LICENSE file supplied with this package.

@@ -1,6 +1,7 @@
 0.3
 
     - Changed to the BSD License.
+    - TLDateRange: Work with stuff between two dates.
     - TLWebControl: Simple framework for websites.
     - TLPath: Path manipulation.
     - TLValidate: Validate variable contents.

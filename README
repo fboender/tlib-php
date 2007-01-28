@@ -30,6 +30,7 @@ Included are:
      * TLUnitTest: Very simple Unit Tester.
     Misc
      * TLControlStruct: Additional control structure tools.
+     * TLDateRange: Work with stuff between two dates.
 
 For documentation please refer to the html/index.html file.
 
