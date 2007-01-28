@@ -1,5 +1,6 @@
 0.3
 
+    - Changed to the BSD License.
     - TLWebControl: Simple framework for websites.
     - TLPath: Path manipulation.
     - TLValidate: Validate variable contents.

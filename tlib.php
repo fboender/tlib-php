@@ -31,7 +31,8 @@
  * <h2>Misc</h2>
  * - TLControlStruct: Additional control structure tools.
  * 
- * TLib-PHP is released under the <a href="http://www.gnu.org/copyleft/gpl.html"> General Public License</a> (LGPL). 
+ * TLib-PHP is released under the BSD license. For more information, see
+ * the LICENSE file supplied with this package.
  */
 
 /////////////////////////////////////////////////////////////////////////////

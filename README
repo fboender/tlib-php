@@ -41,3 +41,9 @@ Just copy tlib.php to a directory that's included in your include_path.
 tlib.php has no dependencies, though some classes may work better if certain
 modules are installed. Please refer to the class documentation to see what
 modules can be installed to improve the workings of that class.
+
+License
+-------
+
+BSD License.
+
