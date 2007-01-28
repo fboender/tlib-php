@@ -21,6 +21,7 @@
  * - TLString: Additional string manipulation methods.
  * - TLVars: Variable manipulation class.
  * - TLNetwork: Network information manipulation class.
+ * - TLPath: Helpers for constructing paths.
  * 
  * <h2>Development helpers</h2>
  * - TLValidate: Variable contents validation.
@@ -349,6 +350,32 @@ class TLWebControlException extends Exception { }
  * Ah, so your name is <b><?=$this->name?></b> huh? Well <?=$this->name?>, welcome
  * to this application. Wanna try it <a href="?action=getName">again</a>?
  * @endcode
+ *
+ * You can have multiple classes that extend TLWebControl. If an action
+ * contains a dot, the TLWebControl class called will find a class that can
+ * handle that action and delegate the action to it. This can be nested as deep
+ * as you want. You can access the delegating (parent) class using
+ * $this->parent. Tip: Use the autoloader functionality. For example:
+ *
+ * @code
+ * class Addresslist extends TLWebControl
+ * {
+ *     public function _init($action) {
+ *     }
+ *     public function showlist() {
+ *         print("An addressbook listing");
+ *     }
+ * }
+ * class Addressbook extends TLWebControl
+ * {
+ *     public function _init($action) {
+ *     }
+ * }
+ * $ab = new Addressbook("Addresslist.showlist");
+ * $output = $ab->_getOutput();
+ * @endcode
+ *
+ * $output will contain "An addressbook listing".
  */
 abstract class TLWebControl
 {
@@ -357,15 +384,25 @@ abstract class TLWebControl
 	private $outputBuffer = "";
 	private $templateContents = '<?=$this->_getOutputBuffer(); ?>';
 	private $templateFile = null;
+	protected $parent = null;  /**< Parent class if action was delegated */
 
 	/**
 	 * @brief Create a new TLWebControl framework.
 	 * @param $defaultAction (string) The default action to run if no action has been specified.
+	 * @param $parent (object) TLWebControl object that delegated the current action to us.
 	 */
-	public function __construct($defaultAction) {
-		// Find the current action
-		$this->defaultAction = $defaultAction;
-		$action = TLVars::import("action", "GP", $defaultAction);
+	public function __construct($defaultAction, $parent = null) {
+		// The parent can be another TLWebControl class that delegated the
+		// handling of the action to this TLWebControl. If so, we don't need to
+		// find a default action but can just use what's been passed to us.
+		if ($parent != null) {
+			$this->parent = $parent;
+			$action = $defaultAction;
+		} else {
+			// Find the current action
+			$this->defaultAction = $defaultAction;
+			$action = TLVars::import("action", "GP", $defaultAction);
+		}
 
 		// Call the init function so the implementor can initialize sessions 'n
 		// stuff.
@@ -376,48 +413,69 @@ abstract class TLWebControl
 	}
 
 	/**
-	 * @brief Run an action that's defined in this web control.
+	 * @brief Run an action that's defined in this or another web control.
 	 * @param $action (string) The action to run.
 	 */
 	public function _action($action) {
-		// We map requested actions directly to methods defined in the derived
-		// class.
-		if (method_exists($this, $action)) {
-			// Check the requested action to see if it's valid. Valid actions
-			// are methods that have been defined and implemented by the class
-			// that's extending a TLWebControl class. In other words, you can't
-			// call methods that are native to TLWebControl.
-			$rClass = new ReflectionClass('TLWebControl');
-			foreach($rClass->getMethods() as $method) {
-				if ($action == $method->name) {
-					throw new TLWebControlException("Cannot call an internal method", 1);
-				}
-			}
+		$output = "";
 
-			// Okay, we can continue with running the requested action. Inspect
-			// the parameters for the method that corresponds to the action so we
-			// can automatically pass them.
-			$params = array();
-			$rObj = new ReflectionObject($this);
-			$rMethod = $rObj->getMethod($action);
-			foreach($rMethod->getParameters() as $param) {
-				$paramName = $param->getName();
-				$paramValue = TLVars::import($paramName, "PG");
-				if (!$paramValue) {
-					throw new TLWebControlException("Missing data '$paramName' for action '$action'", 3);
-				}
-				$params[$paramName] = $paramValue;
+		if (strpos($action, '.') !== false) {
+			// Actions with a dot in them have a seperate class that implements
+			// TLWebControl to handle the actions. Try to find an class that is
+			// supposed to handle this action and then delegate handling the
+			// action to that class.
+			$parts = explode('.', $action);
+			if (class_exists($parts[0]) && get_parent_class($parts[0]) == "TLWebControl") {
+				$className = array_shift($parts);
+				$c = new $className(implode('.', $parts), $this);
+				$output = $c->_getOutput();
+			} else {
+				// Cannot find an object which can handle the action.
+				throw new TLWebControlException("There is no object for the requested action '".$action."'", 2);
 			}
-
-			// Call the method with the parameters.
-			ob_start();
-			call_user_func_array(array($this, $action), $params);
-			$output = ob_get_clean();
 		} else {
-			// Cannot map the action to a method, because it does not exist
-			throw new TLWebControlException("There is no method for the requested action '".$action."'", 2);
-		}
+			// We map requested actions directly to methods defined in the derived
+			// class.
+			if (method_exists($this, $action)) {
+				// Check the requested action to see if it's valid. Valid actions
+				// are methods that have been defined and implemented by the class
+				// that's extending a TLWebControl class. In other words, you can't
+				// call methods that are native to TLWebControl.
+				$rClass = new ReflectionClass('TLWebControl');
+				foreach($rClass->getMethods() as $method) {
+					if ($action == $method->name) {
+						throw new TLWebControlException("Cannot call an internal method", 1);
+					}
+				}
 
+				// Okay, we can continue with running the requested action. Inspect
+				// the parameters for the method that corresponds to the action so we
+				// can automatically pass them.
+				$params = array();
+				$rObj = new ReflectionObject($this);
+				$rMethod = $rObj->getMethod($action);
+				foreach($rMethod->getParameters() as $param) {
+					$paramName = $param->getName();
+					$paramValue = TLVars::import($paramName, "PG");
+					if (!$paramValue) {
+						if ($param->isDefaultValueAvailable()) {
+							$paramValue = $param->getDefaultValue();
+						} else {
+							throw new TLWebControlException("Missing data '$paramName' for action '$action'", 4);
+						}
+					}
+					$params[$paramName] = $paramValue;
+				}
+
+				// Call the method with the parameters.
+				ob_start();
+				call_user_func_array(array($this, $action), $params);
+				$output = ob_get_clean();
+			} else {
+				// Cannot map the action to a method, because it does not exist
+				throw new TLWebControlException("There is no method for the requested action '".$action."'", 3);
+			}
+		}
 		$this->outputBuffer .= $output;
 	}
 
@@ -446,9 +504,9 @@ abstract class TLWebControl
 	 * @param $filename (string) Filename of the view to parse.
 	 */
 	public function _view($filename) {
-		$contents = file_get_contents($filename);
+		$contents = @file_get_contents($filename);
 		if ($contents === false) {
-			throw new TLWebControlException("Cannot read view from file '$filename'", 4);
+			throw new TLWebControlException("Cannot read view from file '$filename'", 6);
 		}
 		// FIXME: Syntax check eval using Parsekit
 		eval("?>".$contents);
@@ -470,9 +528,9 @@ abstract class TLWebControl
 	 * @param $filename (string) Filename of the template to use.
 	 */
 	public function _setTemplateFromFile($filename) {
-		$contents = file_get_contents($filename);
+		$contents = @file_get_contents($filename);
 		if ($contents === false) {
-			throw new TLWebControlException("Cannot read template '$filename'", 3);
+			throw new TLWebControlException("Cannot read template '$filename'", 5);
 		}
 		$this->templateFilename = $filename;
 		$this->templateContents = $contents;
@@ -1501,6 +1559,35 @@ class TLControlStruct
 	}
 }
 
+/**
+ * @brief Methods for working with paths.
+ */
+class TLPath
+{
+	/**
+	 * @brief Construct a path from a variable number of arguments.
+	 * 
+	 * This method will construct a path from the arguments you pass it. It
+	 * will automatically remove pending and trailing slashes of needed.
+	 *
+	 * @param ... Elements that will make up the path. If the last argument is True (boolean), a slash will be appended to the path.
+	 */
+	public static function concat() {
+		$args = func_get_args();
+		$path = "";
+		foreach($args as $arg) {
+			if (!is_bool($arg)) {
+				$path .= '/';
+				$path .= ltrim(rtrim($arg, '/'), '/');
+			} else {
+				if ($arg === true) {
+					$path .= '/';
+				}
+			}
+		}
+		return($path);
+	}
+}
 /* Perform a bunch of tests/examples if we're the main script */
 if (TLControlStruct::isMain(__FILE__)) {
 	TLDebug::startPedantic();
