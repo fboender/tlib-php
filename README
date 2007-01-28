@@ -1,15 +1,43 @@
 TLib-PHP
 
+About
+-----
+
 This is TLib-PHP, a collection of PHP classes/functions/stuff that I (Ferry
 Boender) deem useful. Examples on how to use the various classes and methods
 are found at the bottom of tlib.php. Enjoy!
 
 Included are:
 
-    * A string class (not generic string handling, just useful stuff)
-    * A variable manipulation class
-    * A control structure class features additional control structure thingies.
-    * A simple, easy to use, unit tester.
-    * And more... see the html/ directory for a full list.
+    Web
+     * TLSelfURL: Helper class for referring to the current page (location).
+     * TLWebControl: Simple website controller framework with OO, views and
+       templates.
+    Exceptions
+     * TLTypeException: Throw this when a passed parameter is not of the
+       expected type.
+     * TLValueException: Throw this when a passed parameter does not have a
+       correct value.
+     * TLSQLException: Throw this when your program encounters an SQL error.
+    Information manipulation classes
+     * TLString: Additional string manipulation methods.
+     * TLVars: Variable manipulation class.
+     * TLNetwork: Network information manipulation class.
+     * TLPath: Helpers for constructing paths.
+    Development helpers
+     * TLValidate: Variable contents validation.
+     * TLDebug: Additional debugging stuff.
+     * TLUnitTest: Very simple Unit Tester.
+    Misc
+     * TLControlStruct: Additional control structure tools.
 
 For documentation please refer to the html/index.html file.
+
+Installation
+------------
+
+Just copy tlib.php to a directory that's included in your include_path.
+
+tlib.php has no dependencies, though some classes may work better if certain
+modules are installed. Please refer to the class documentation to see what
+modules can be installed to improve the workings of that class.
