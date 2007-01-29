@@ -29,6 +29,8 @@ Included are:
      * TLDebug: Additional debugging stuff.
      * TLUnitTest: Very simple Unit Tester.
     Misc
+     * TLAutoDelegate: Allows automatic delegation to objects (semi-multiple
+       inheritance).
      * TLControlStruct: Additional control structure tools.
      * TLDateRange: Work with stuff between two dates.
 

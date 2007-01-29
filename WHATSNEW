@@ -5,9 +5,12 @@
     - TLWebControl: Simple framework for websites.
     - TLPath: Path manipulation.
     - TLValidate: Validate variable contents.
+    - TLAutoDelegate: Automatic delegation to objects (semi-multiple
+      inheritance).
     - Numerous standard exceptions added/improved.
     - Improved documentation.
     - Small bugfixes.
+
 0.2
 
     - TLNetwork: Network information manipulation class. Netmask dotted <-> bit

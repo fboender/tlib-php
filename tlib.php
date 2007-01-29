@@ -29,6 +29,7 @@
  * - TLUnitTest: Very simple Unit Tester.
  * 
  * <h2>Misc</h2>
+ * - TLAutoDelegate: Allows automatic delegation to objects (semi-multiple inheritance).
  * - TLControlStruct: Additional control structure tools.
  * - TLDateRange: Work with stuff between two dates.
  * 
@@ -254,7 +255,11 @@ class TLSelfURL {
 	}
 }
 
+/**
+ * @brief Default exception thrown by TLWebControl objects.
+ */
 class TLWebControlException extends Exception { }
+
 /**
  * @brief Simple website controller framework with OO, views and templates.
  * 
@@ -571,13 +576,13 @@ abstract class TLWebControl
  * @code
  * function setAge($age) {
  *   if (!is_int($age)) {
- *     throw new TypeException("int", $age, "age");
+ *     throw new TLTypeException("int", $age, "age");
  *   }
  *   print("You're age is $age");
  * }
  * function setPerson($person) {
  *   if (!is_object($person) || get_class($person) != "Person") {
- *     throw new TypeException("object(Person)", $person, "person");
+ *     throw new TLTypeException("object(Person)", $person, "person");
  *   }
  * }
  * setAge("fourty");
@@ -588,14 +593,14 @@ abstract class TLWebControl
  * Results in:
  * 
  * <pre>
- *    Uncaught exception 'TypeException' with message 'Expected "int", got "string(fourty)"' in [stacktrace]
- *    Uncaught exception 'TypeException' with message 'Expected "object(Person)", got "object(Monkey)"' in [stacktrace]
+ *    Uncaught exception 'TLTypeException' with message 'Expected "int", got "string(fourty)"' in [stacktrace]
+ *    Uncaught exception 'TLTypeException' with message 'Expected "object(Person)", got "object(Monkey)"' in [stacktrace]
  * </pre>
  */
 class TLTypeException extends Exception {
 
 	/**
-	 * @brief Construct a new TypeException
+	 * @brief Construct a new TLTypeException
 	 * @param $expectedType (string) The type you where expecting (int, string, object(ClassType))
 	 * @param $gotVar (mixed) The variable you got who's type didn't match.
 	 * @param $varName (string) The name of the variable you got who's type didn't match.
@@ -633,15 +638,15 @@ class TLTypeException extends Exception {
  * @code
  *  $qry = "INSERT INTO foo VALUES (10, 'bar');";
  *  $res = mysql_query($qry);
- *  if (!$res) { throw new SQLException(mysql_error(), $qry); }
+ *  if (!$res) { throw new TLSQLException(mysql_error(), $qry); }
  * @endcode
  */
 class TLSQLException extends Exception {
 
 	/**
-	 * @brief Construct a new SQLException
+	 * @brief Construct a new TLSQLException
 	 * @param $message (string) The message for the exception. Usually the return value of mysql_error() is passed here.
-	 * @param $query (string) The query which contained the caused the error.
+	 * @param $query (string) The query which caused the error.
 	 */
 	public function __construct($message, $query = "") {
 		$this->message = $message;
@@ -666,13 +671,13 @@ class TLSQLException extends Exception {
  * @code
  * function setAge($age) {
  *   if ($age < 5 || $age > 120)) {
- *     throw new ValueException("Age too small or large", $age, "age");
+ *     throw new TLValueException("Age too small or large", $age, "age");
  *   }
  *   print("You're age is $age");
  * }
  * function setEMail($address) {
  *   if (strpos("@", $address) === False) {
- *     throw new ValueException("Should contain '@' char", $address, "address");
+ *     throw new TLValueException("Should contain '@' char", $address, "address");
  * }
  * setAge(3);
  * setEmail("f dot boender at zx dot nl");
@@ -695,7 +700,7 @@ class TLSQLException extends Exception {
 class TLValueException extends Exception {
 
 	/**
-	 * @brief Construct a new ValueException 
+	 * @brief Construct a new TLValueException 
 	 * @param $message (string) The message which describes the value problem.
 	 * @param $varValue (mixed) The variable you got which did not follow expectations.
 	 * @param $varName (string) The name of the variable (without the $ prepended) you got which did not follow expectations.
@@ -1557,6 +1562,102 @@ class TLControlStruct
 			return(true);
 		} else {
 			return(false);
+		}
+	}
+}
+
+/**
+ * @brief Default exception thrown by TLAutoDelegate objects
+ */
+class TLAutoDelegateException extends Exception {}
+
+/**
+ * @brief Allows automatic delegation to objects (semi-multiple inheritance).
+ *
+ * The TLAutoDelegate class allows one to automatically delegate method
+ * calls to delegation objects. (See the Delegation pattern). This can be
+ * used to simulate a crude, limited form of multiple inheritence, which is
+ * missing from PHP5.
+ *
+ * A developer can extend the TLAutoDelegate class and then add objects
+ * containing methods that should be delegated from the current object. 
+ *
+ * Example: 
+ * @code
+ * class Foo {
+ *     public function bar() {
+ *         print("Foo::bar()\n");
+ *     }
+ * }
+ * 
+ * class Baz {
+ *     public function bah() {
+ *         print("Baz::bah()\n");
+ *     }
+ * }
+ * 
+ * class Test extends TLAutoDelegate {
+ *     public function __construct() {
+ *         $this->delegateTo(new Foo());
+ *         $this->delegateTo(new Baz());
+ *     }
+ * }
+ * 
+ * $t = new Test();
+ * $t->bar(); // Foo::bar()
+ * $t->bah(); // Baz::bah()
+ * @endcode
+ * For a longer example, see the examples/ directory.
+ */
+abstract class TLAutoDelegate
+{
+	protected $delegates = array(); /**< Array of objects that this object will delegate too. */
+
+	/**
+	 * @brief Add a class who's methods should be delegated from this object to $class.
+	 * @param $class (object) The class who's methods to delegate to.
+	 * @throw TLAutoDelegateException
+	 */
+	protected function delegateTo($class) {
+		if (is_object($class)) {
+			// Detect method collisions.
+
+			// Get the new class's methods.
+			$newClassRefl = new ReflectionClass($class);
+			$newMethods = array();
+			foreach($newClassRefl->getMethods() as $method) {
+				if ($method->name !== "__construct") {
+					$newMethods[] = $method->name;
+				}
+			}
+
+			// Check the currently delegation classes' methods
+			foreach(array_merge($this->delegates, array($this)) as $presentClass) {
+				$presentClassRefl = new ReflectionClass($presentClass);
+				foreach ($presentClassRefl->getMethods() as $method) {
+					if (in_array($method->name, $newMethods)) {
+						throw new TLAutoDelegateException($newClassRefl->name."::".$method->name."() collides with ".($presentClassRefl->name)."::".$method->name, 1);
+					} 
+				}
+			}
+
+			// No collisions: add the class to the list of delegates.
+			$this->delegates[] = $class;
+		} else {
+			throw new TLTypeException("object", $class, "class");
+		}
+	}
+
+	/**
+	 * @brief Overload __call to delegate methods to delegation classes.
+	 * @param $name (string) Method called.
+	 * @param $arguments (array) Arguments.
+	 */
+	public function __call($name, $arguments) {
+		foreach($this->delegates as $delegate) {
+			if (method_exists($delegate, $name)) {
+				call_user_func_array(array($delegate, $name), $arguments);
+			}
 		}
 	}
 }

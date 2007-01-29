@@ -16,6 +16,7 @@ doxygen
 mkdir tlib-php-$1
 cp * tlib-php-$1
 cp html tlib-php-$1 -r
+cp examples tlib-php-$1 -r
 rm tlib-php-$1/mkrelease.sh
 rm tlib-php-$1/Doxyfile
 tar -vczf tlib-php-$1.tar.gz tlib-php-$1
