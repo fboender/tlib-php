@@ -1656,7 +1656,7 @@ abstract class TLAutoDelegate
 	public function __call($name, $arguments) {
 		foreach($this->delegates as $delegate) {
 			if (method_exists($delegate, $name)) {
-				call_user_func_array(array($delegate, $name), $arguments);
+				return(call_user_func_array(array($delegate, $name), $arguments));
 			}
 		}
 	}
