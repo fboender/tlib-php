@@ -315,8 +315,7 @@ class TLWebControlException extends Exception { }
  * 
  *     public function processName($name) {
  *         $this->title = "Name processed";
- *         $this->name = $name;
- *         $this->_view("processName.php");
+ *         $this->_view("processName.php", compact("name"));
  *     }
  * }
  * 
@@ -354,7 +353,7 @@ class TLWebControlException extends Exception { }
  *
  * <b>processName.php</b>
  * @code
- * Ah, so your name is <b><?=$this->name?></b> huh? Well <?=$this->name?>, welcome
+ * Ah, so your name is <b><?=$name?></b> huh? Well <?=$this->name?>, welcome
  * to this application. Wanna try it <a href="?action=getName">again</a>?
  * @endcode
  *
@@ -387,7 +386,7 @@ class TLWebControlException extends Exception { }
 abstract class TLWebControl
 {
 	private $defaultAction;
-	private $action;
+	protected $action;
 	private $outputBuffer = "";
 	private $templateContents = '<?=$this->_getOutputBuffer(); ?>';
 	private $templateFile = null;
@@ -404,19 +403,19 @@ abstract class TLWebControl
 		// find a default action but can just use what's been passed to us.
 		if ($parent != null) {
 			$this->parent = $parent;
-			$action = $defaultAction;
+			$this->action = $defaultAction;
 		} else {
 			// Find the current action
 			$this->defaultAction = $defaultAction;
-			$action = TLVars::import("action", "GP", $defaultAction);
+			$this->action = TLVars::import("action", "GP", $defaultAction);
 		}
 
 		// Call the init function so the implementor can initialize sessions 'n
 		// stuff.
-		$this->_init($action);
+		$this->_init($this->action);
 
 		// Run the action
-		$this->_action($action);
+		$this->_action($this->action);
 	}
 
 	/**
@@ -464,7 +463,7 @@ abstract class TLWebControl
 				foreach($rMethod->getParameters() as $param) {
 					$paramName = $param->getName();
 					$paramValue = TLVars::import($paramName, "PG");
-					if (!$paramValue) {
+					if ($paramValue === null) {
 						if ($param->isDefaultValueAvailable()) {
 							$paramValue = $param->getDefaultValue();
 						} else {
@@ -501,6 +500,7 @@ abstract class TLWebControl
 	public function _getOutput() {
 		ob_start();
 		// FIXME: Syntax check eval using Parsekit
+		$this->checkSyntax($this->templateContents);
 		eval("?>".$this->templateContents);
 		$out = ob_get_clean();
 		return($out);
@@ -509,9 +509,14 @@ abstract class TLWebControl
 	/**
 	 * @brief Parse a view
 	 * @param $filename (string) Filename of the view to parse.
+	 * @param variables (array) Array with keys=>values that can be used in the view. Use compact("varname1", "varname2") too easily pass variables from the controller.
 	 */
-	public function _view($filename) {
+	public function _view($filename, $variables = null) {
+		if (is_array($variables)) {
+			extract($variables);
+		}
 		$contents = @file_get_contents($filename);
+		$this->checkSyntax($contents);
 		if ($contents === false) {
 			throw new TLWebControlException("Cannot read view from file '$filename'", 6);
 		}
@@ -526,6 +531,24 @@ abstract class TLWebControl
 	public function _viewString($contents) {
 		// FIXME: Syntax check eval using Parsekit
 		eval("?>".$contents);
+	}
+
+	private function checkSyntax($phpCode) {
+		if (!extension_loaded('parsekit')) {
+			if (@dl('parsekit.so')) {
+				$parsekitAvail = true;
+			} else {
+				$parsekitAvail = false;
+			}
+		} else {
+			$parsekitAvail = true;
+		}
+
+		if ($parsekitAvail) {
+			/* Do check */
+		} else {
+			return(true);
+		}
 	}
 
 	/**
